@@ -1377,6 +1377,8 @@ kind: RouteTable
 metadata:
   name: httpbin
   namespace: httpbin
+  labels:
+    expose: true
 spec:
   hosts:
     - '*'
