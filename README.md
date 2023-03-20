@@ -1412,8 +1412,8 @@ echo "${APP_CALLBACK_URL}/get"
 ### User Credentials
 If you are using the example client config above, below are a few users that you can validate with
 - Username: jdoe@solo.io // Password: gloo-admin
+- Username: test@solo.io // Password: gloo-public
 - Username: jdoe@gmail.com // Password: gloo-public
-
 
 ## Lab 13 - Integrating with OPA <a name="lab-12---integrating-with-opa-"></a>
 
@@ -1498,7 +1498,7 @@ If you decode the JWT provided (using jwt.io for example), we can see other clai
 }
 ```
 
-We can modify our rego rule to apply policy to map to `sub` as well as `email` claims
+We can modify our rego rule to apply policy to map to `name` instead of the `email` claim
 ```bash
 kubectl --context ${CLUSTER1} apply -f - <<EOF
 apiVersion: v1
@@ -1514,16 +1514,21 @@ data:
 
     allow {
         [header, payload, signature] = io.jwt.decode(input.http_request.headers.jwt)
-        endswith(payload["email"], "@solo.io")
-    }
-    allow {
-        [header, payload, signature] = io.jwt.decode(input.http_request.headers.jwt)
         endswith(payload["name"], "jdoe")
     }
 EOF
 ```
 
-Now you should be able to access the app logging in with users that end in `@solo.io`, as well as `@solo.io`
+Now you should be able to access the app logging in with jdoe user, but would get a 403 if you had a different `name` claim. In an incognito brower you can test this by logging into the `test@solo.io` user with the password `gloo-public`
+
+This is because the test@solo.io user's claims would look something like this:
+```
+{
+  "sub": "00u6v09p4fVhmvMEN5d7",
+  "name": "solouser io",
+  "email": "test@solo.io",
+}
+```
 
 ### Use OPA to enforce a specific HTTP method
 Let's continue to expand on our example by enforcing different HTTP methods for our two types of users
