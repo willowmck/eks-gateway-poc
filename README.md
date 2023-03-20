@@ -1316,7 +1316,7 @@ spec:
   applyToRoutes:
   - route:
       labels:
-        route_name: "httpbin-all"
+        route_name: "httpbin"
   config:
     server:
       name: cluster1-ext-auth-server
@@ -1378,19 +1378,12 @@ metadata:
   name: httpbin
   namespace: httpbin
   labels:
-    expose: true
+    expose: "true"
 spec:
-  hosts:
-    - '*'
-  virtualGateways:
-    - name: north-south-gw
-      namespace: istio-gateways
-      cluster: cluster1
-  workloadSelectors: []
   http:
-    - name: httpbin-all
+    - name: httpbin
       labels:
-        route_name: "httpbin-all"
+        route_name: "httpbin"
         ratelimited: "true"
       matchers:
       - uri:
@@ -1415,6 +1408,12 @@ Now when you access your httpbin app through the browser, it will be protected b
 ```
 echo "${APP_CALLBACK_URL}/get"
 ```
+
+### User Credentials
+If you are using the example client config above, below are a few users that you can validate with
+- Username: jdoe@solo.io // Password: gloo-admin
+- Username: jdoe@gmail.com // Password: gloo-public
+
 
 ## Lab 13 - Integrating with OPA <a name="lab-12---integrating-with-opa-"></a>
 
