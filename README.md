@@ -29,8 +29,7 @@ source ./scripts/assert.sh
 * [Lab 12 - Securing Application Access with OAuth](#lab-12---securing-application-access-with-oauth-)
 * [Lab 13 - Integrating with OPA](#lab-13---integrating-with-opa-)
 * [Lab 14 - Apply rate limiting to the Gateway](#lab-14---apply-rate-limiting-to-the-gateway-)
-* [Lab 17 - Use the Web Application Firewall filter](#lab-17---use-the-web-application-firewall-filter-)
-* [Lab 18 - Upgrade Istio using Gloo Mesh Lifecycle Manager](#lab-18---upgrade-istio-using-gloo-mesh-lifecycle-manager-)
+* [Lab 15 - Upgrade Istio using Gloo Mesh Lifecycle Manager](#lab-15---upgrade-istio-using-gloo-mesh-lifecycle-manager-)
 
 
 
@@ -1852,7 +1851,7 @@ kubectl --context ${CLUSTER1} -n httpbin delete ratelimitserversettings rate-lim
 
 
 
-## Lab 18 - Upgrade Istio using Gloo Mesh Lifecycle Manager <a name="lab-18---upgrade-istio-using-gloo-mesh-lifecycle-manager-"></a>
+## Lab 15 - Upgrade Istio using Gloo Mesh Lifecycle Manager <a name="lab-15---upgrade-istio-using-gloo-mesh-lifecycle-manager-"></a>
 
 Set the variables corresponding to the old and new revision tags:
 
