@@ -1266,7 +1266,8 @@ In this step, we're going to secure the access to the `httpbin` service using OA
 ### In your OIDC Provider
 Once the app has been configured in the external OIDC, we need to create a Kubernetes Secret that contains the OIDC client-secret. Please provide this value input before running the command below:
 ```bash
-export HTTPBIN_CLIENT_SECRET="<provide OIDC client secret here>"
+# example oidc client secret that works with okta
+export HTTPBIN_CLIENT_SECRET="3cMS-DdmZH0UoHHRWgfWlNzHjTjty56DPaB66Mv2"
 ```
 
 ```bash
@@ -1291,8 +1292,9 @@ echo $APP_CALLBACK_URL
 
 Lastly, replace the `OICD_CLIENT_ID` and `ISSUER_URL` values below with your OIDC app settings
 ```bash
-export OIDC_CLIENT_ID="<INPUT_OIDC_CLIENT_ID>"
-export ISSUER_URL="<INPUT_ISSUER_URL_HERE>"
+# example oidc client secret that works with okta
+export OIDC_CLIENT_ID="0oa6qvzybcVCK6PcS5d7"
+export ISSUER_URL="https://dev-22653158.okta.com/oauth2/default"
 ```
 
 Let's make sure our variables are set correctly:
