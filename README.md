@@ -1435,7 +1435,7 @@ First we will create a new `ExtAuthPolicy` object to add the OPA filter. Note th
 
 Lets apply the following policy
 ```bash
-kubectl --context ${MGMT} apply -f - <<EOF
+kubectl --context ${CLUSTER1} apply -f - <<EOF
 apiVersion: security.policy.gloo.solo.io/v2
 kind: ExtAuthPolicy
 metadata:
@@ -1467,7 +1467,7 @@ For our first use-case we will decode the JWT token passed through extauth for t
 
 First, you need to create a `ConfigMap` with the policy written in rego. 
 ```bash
-kubectl --context ${MGMT} apply -f - <<EOF
+kubectl --context ${CLUSTER1} apply -f - <<EOF
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -1499,7 +1499,7 @@ If you decode the JWT provided (using jwt.io for example), we can see other clai
 
 We can modify our rego rule to apply policy to map to `sub` as well as `email` claims
 ```bash
-kubectl --context ${MGMT} apply -f - <<EOF
+kubectl --context ${CLUSTER1} apply -f - <<EOF
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -1527,7 +1527,7 @@ Now you should be able to access the app logging in with users that end in `@sol
 ### Use OPA to enforce a specific HTTP method
 Let's continue to expand on our example by enforcing different HTTP methods for our two types of users
 ```bash
-kubectl --context ${MGMT} apply -f - <<EOF
+kubectl --context ${CLUSTER1} apply -f - <<EOF
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -1562,7 +1562,7 @@ If you refresh the browser where the `@solo.io` or `@solo.io` user is logged in,
 
 Let's fix that
 ```bash
-kubectl --context ${MGMT} apply -f - <<EOF
+kubectl --context ${CLUSTER1} apply -f - <<EOF
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -1602,7 +1602,7 @@ Let's continue to expand on our example by enforcing a specified path for our us
 
 Here we will modify our rego rule so that users with the `sub` claim containing `@solo.io` can access the `/get` endpoint as well as any path with the prefix `/anything`, while users with the `email` claim containing `@solo.io` can only access specifically the `/anything/protected` endpoint
 ```bash
-kubectl --context ${MGMT} apply -f - <<EOF
+kubectl --context ${CLUSTER1} apply -f - <<EOF
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -1645,7 +1645,7 @@ If you refresh the browser where the `@solo.io` user is logged in, we should now
 ### cleanup extauthpolicy for next labs
 In the next labs we will explore using `JWTPolicy` to extract validated claims into new arbitrary headers and configure our OPA to leverage them. For now, we can remove the `httpbin-opa` policy to validate behavior before reimplementing it.
 ```
-kubectl --context ${MGMT} -n httpbin delete ExtAuthPolicy httpbin-opa
+kubectl --context ${CLUSTER1} -n httpbin delete ExtAuthPolicy httpbin-opa
 ```
 
 This diagram shows the flow of the request (with the Istio ingress gateway leveraging the `extauth` Pod to authorize the request):
@@ -1662,7 +1662,7 @@ In this step, we're going to apply rate limiting to the Gateway to only allow 5 
 First, we need to create a `RateLimitClientConfig` object to define the descriptors:
 
 ```bash
-kubectl --context ${MGMT} apply -f - <<EOF
+kubectl --context ${CLUSTER1} apply -f - <<EOF
 apiVersion: trafficcontrol.policy.gloo.solo.io/v2
 kind: RateLimitClientConfig
 metadata:
@@ -1683,7 +1683,7 @@ EOF
 Then, we need to create a `RateLimitServerConfig` object to define the limits based on the descriptors:
 
 ```bash
-kubectl --context ${MGMT} apply -f - <<EOF
+kubectl --context ${CLUSTER1} apply -f - <<EOF
 apiVersion: admin.gloo.solo.io/v2
 kind: RateLimitServerConfig
 metadata:
@@ -1714,7 +1714,7 @@ EOF
 After that, we need to create a `RateLimitPolicy` object to define the descriptors:
 
 ```bash
-kubectl --context ${MGMT} apply -f - <<EOF
+kubectl --context ${CLUSTER1} apply -f - <<EOF
 apiVersion: trafficcontrol.policy.gloo.solo.io/v2
 kind: RateLimitPolicy
 metadata:
@@ -1746,7 +1746,7 @@ EOF
 We also need to create a `RateLimitServerSettings`, which is a CRD that define which extauth server to use: 
 
 ```bash
-kubectl --context ${MGMT} apply -f - <<EOF
+kubectl --context ${CLUSTER1} apply -f - <<EOF
 apiVersion: admin.gloo.solo.io/v2
 kind: RateLimitServerSettings
 metadata:
