@@ -1492,8 +1492,9 @@ Now we should see success when logging in with a username that ends with `@solo.
 If you decode the JWT provided (using jwt.io for example), we can see other claims available
 ```
 {
-  "sub": "alex.solo@solo.io",
-  "email": "alex.ly@solo.io"
+  "sub": "00u5c8ipkj3HyHoS25d7",
+  "name": "jdoe",
+  "email": "jdoe@solo.io",
 }
 ```
 
@@ -1517,7 +1518,7 @@ data:
     }
     allow {
         [header, payload, signature] = io.jwt.decode(input.http_request.headers.jwt)
-        endswith(payload["sub"], "@solo.io")
+        endswith(payload["name"], "jdoe")
     }
 EOF
 ```
