@@ -1467,7 +1467,7 @@ See output named `bug-report.tar.gz`
 
 As a part of the Gloo Platform Helm setup, we installed the Gloo OpenTelemetry Pipeline. A high level architecture of the pipeline looks like this:
 
-![otel pipeline](images/otel/metrics-architecture-otel.png)
+![otel pipeline](images/observability/metrics-architecture-otel.png)
 
 - Gloo metrics collector agents are deployed as a daemonset in all Gloo workload clusters. The collector agents scrape metrics from workloads in your cluster, such as the Gloo agents, the Istio control plane istiod, or the Istio-injected workloads. The agents then enrich and convert the metrics. For example, the ID of the source and destination workload is added to the metrics so that you can filter the metrics for the workload that you are interested in.
 - The collector agents send the scraped metrics to the Gloo metrics gateway in the Gloo management cluster via gRPC push procedures.
