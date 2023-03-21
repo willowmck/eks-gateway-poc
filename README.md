@@ -1416,10 +1416,7 @@ redis-669c97869d-hjtfp.gloo-mesh-addons                       cluster1     SYNCE
 
 ## Retrieve diffs between Envoy and Istiod
 ```
-% istioctl proxy-status deploy/in-mesh -n httpbin
-Clusters Match
-Listeners Match
-Routes Match (RDS last loaded at Tue, 14 Jun 2022 20:43:02 PDT)
+istioctl proxy-status deploy/in-mesh -n httpbin
 ```
 
 ## grab envoy stats of sidecar using istioctl
