@@ -1434,7 +1434,7 @@ If you refresh the browser where the `@solo.io` user is logged in, we should be 
 If you refresh the browser where the `@gmail.com` user is logged in, we should now see a `403 Error - You don't have authorization to view this page` if you access anything other than the `/anything/opa-protected` endpoint
 
 ### cleanup extauthpolicy for next labs
-If you need to clean up the extauth policy, simply just remove it with the command below
+This step is not required to continue with the labs, but if you need to clean up the extauth policy, simply just remove it with the command below
 ```
 kubectl --context ${CLUSTER1} -n httpbin delete ExtAuthPolicy httpbin-opa
 ```
@@ -2074,9 +2074,10 @@ You should get the following output:
 
 ```
 NAME                           READY   STATUS    RESTARTS   AGE
-istiod-1-16-796fffbdf5-n6xc9   1/1     Running   0          25m
+istiod-1-17-577c47cf5c-m6mf4   1/1     Running   0          3m16s
 NAME                                          READY   STATUS    RESTARTS   AGE
-istio-ingressgateway-1-16-784f69b4bb-lcfk9    1/1     Running   0          25m
+istio-eastwestgateway-1-17-7c7f4dbc9-j8qk5   1/1     Running   0          100s
+istio-ingressgateway-1-17-d64766d6b-bmpft    1/1     Running   0          100s
 ```
 
 It confirms that only the new version is running.
