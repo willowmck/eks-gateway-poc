@@ -1205,7 +1205,7 @@ You can also perform authorization using OPA. Gloo Mesh's OPA integration popula
 - `input.state.jwt` - When the OIDC auth plugin is utilized, the token retrieved during the OIDC flow is placed into this field. 
 
 ## Lab
-In this lab, we will make use of the `input.http_request` parameter in our OPA policies to decode the `jwt` token retrieved in the last lab and create policies using the claims available, namely the `sub` and `email` claims.
+In this lab, we will make use of the `input.http_request` parameter in our OPA policies to decode the `jwt` token retrieved in the last lab and create policies using the claims available
 
 Instead of coupling the `oauth2` config with the `opa` config in a single `ExtAuthPolicy`, here we will separate the app to decouple the APIs from apps
 
@@ -1391,7 +1391,7 @@ Now we should be able to access our app again.
 ### Enforce paths with OPA
 Let's continue to expand on our example by enforcing a specified path for our users
 
-Here we will modify our rego rule so that users with the `sub` claim containing `@solo.io` can access the `/get` endpoint as well as any path with the prefix `/anything`, while users with the `email` claim containing `@solo.io` can only access specifically the `/anything/protected` endpoint
+Here we will modify our rego rule so that users with the `email` claim containing `@solo.io` can access the `/get` endpoint as well as any path with the prefix `/anything`, while users with the `email` claim containing `@solo.io` can only access specifically the `/anything/protected` endpoint
 ```bash
 kubectl --context ${CLUSTER1} apply -f - <<EOF
 apiVersion: v1
