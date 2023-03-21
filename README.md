@@ -18,18 +18,15 @@ source ./scripts/assert.sh
 * [Lab 1 - Setting up your Environment Variables](#lab-1---setting-up-your-environment-variables-)
 * [Lab 2 - Deploy and register Gloo Mesh](#lab-2---deploy-and-register-gloo-mesh-)
 * [Lab 3 - Deploy Istio using Gloo Mesh Lifecycle Manager](#lab-3---deploy-istio-using-gloo-mesh-lifecycle-manager-)
-* [Lab 4 - Deploy the Bookinfo demo app](#lab-4---deploy-the-bookinfo-demo-app-)
-* [Lab 5 - Deploy the httpbin demo app](#lab-5---deploy-the-httpbin-demo-app-)
-* [Lab 6 - Deploy Gloo Mesh Addons](#lab-6---deploy-gloo-mesh-addons-)
-* [Lab 7 - Create the gateways workspace](#lab-7---create-the-gateways-workspace-)
-* [Lab 8 - Create the bookinfo workspace](#lab-8---create-the-bookinfo-workspace-)
-* [Lab 9 - Expose the productpage through a gateway](#lab-9---expose-the-productpage-through-a-gateway-)
-* [Lab 10 - Create the httpbin workspace](#lab-10---create-the-httpbin-workspace-)
-* [Lab 11 - Expose the httpbin service](#lab-11---expose-the-httpbin-service-)
-* [Lab 12 - Securing Application Access with OAuth](#lab-12---securing-application-access-with-oauth-)
-* [Lab 13 - Integrating with OPA](#lab-13---integrating-with-opa-)
-* [Lab 14 - Apply rate limiting to the Gateway](#lab-14---apply-rate-limiting-to-the-gateway-)
-* [Lab 15 - Upgrade Istio using Gloo Mesh Lifecycle Manager](#lab-15---upgrade-istio-using-gloo-mesh-lifecycle-manager-)
+* [Lab 4 - Deploy Gloo Mesh Addons](#lab-4---deploy-gloo-mesh-addons-)
+* [Lab 5 - Create the gateways workspace](#lab-5---create-the-gateways-workspace-)
+* [Lab 6 - Deploy the httpbin demo app](#lab-6---deploy-the-httpbin-demo-app-)
+* [Lab 7 - Create the httpbin workspace](#lab-7---create-the-httpbin-workspace-)
+* [Lab 8 - Expose the httpbin service](#lab-8---expose-the-httpbin-service-)
+* [Lab 9 - Securing Application access with OAuth](#lab-9---securing-application-access-with-oauth-)
+* [Lab 10 - Integrating with OPA](#lab-10---integrating-with-opa-)
+* [Lab 11 - Apply rate limiting to the Gateway](#lab-11---apply-rate-limiting-to-the-gateway-)
+* [Lab 12 - Upgrade Istio using Gloo Mesh Lifecycle Manager](#lab-12---upgrade-istio-using-gloo-mesh-lifecycle-manager-)
 
 
 
@@ -567,92 +564,97 @@ echo "saving errors in ${tempfile}"
 mocha ./test.js --timeout 10000 --retries=50 --bail 2> ${tempfile} || { cat ${tempfile} && exit 1; }
 -->
 
+## Lab 4 - Deploy Gloo Mesh Addons <a name="lab-4---deploy-gloo-mesh-addons-"></a>
 
+To use the Gloo Mesh Gateway advanced features (external authentication, rate limiting, ...), you need to install the Gloo Mesh addons.
 
-## Lab 4 - Deploy the Bookinfo demo app <a name="lab-4---deploy-the-bookinfo-demo-app-"></a>
-
-We're going to deploy the bookinfo application to demonstrate several features of Gloo Mesh.
-
-You can find more information about this application [here](https://istio.io/latest/docs/examples/bookinfo/).
-
-Run the following commands to deploy the bookinfo application on `cluster1`:
+First, you need to create a namespace for the addons, with Istio injection enabled:
 
 ```bash
-curl https://raw.githubusercontent.com/istio/istio/release-1.16/samples/bookinfo/platform/kube/bookinfo.yaml > bookinfo.yaml
-
-kubectl --context ${CLUSTER1} create ns bookinfo-frontends
-kubectl --context ${CLUSTER1} create ns bookinfo-backends
-kubectl --context ${CLUSTER1} label namespace bookinfo-frontends istio.io/rev=1-16 --overwrite
-kubectl --context ${CLUSTER1} label namespace bookinfo-backends istio.io/rev=1-16 --overwrite
-
-# deploy the frontend bookinfo service in the bookinfo-frontends namespace
-kubectl --context ${CLUSTER1} -n bookinfo-frontends apply -f bookinfo.yaml -l 'account in (productpage)'
-kubectl --context ${CLUSTER1} -n bookinfo-frontends apply -f bookinfo.yaml -l 'app in (productpage)'
-kubectl --context ${CLUSTER1} -n bookinfo-backends apply -f bookinfo.yaml -l 'account in (reviews,ratings,details)'
-# deploy the backend bookinfo services in the bookinfo-backends namespace for all versions less than v3
-kubectl --context ${CLUSTER1} -n bookinfo-backends apply -f bookinfo.yaml -l 'app in (reviews,ratings,details),version notin (v3)'
-# Update the productpage deployment to set the environment variables to define where the backend services are running
-kubectl --context ${CLUSTER1} -n bookinfo-frontends set env deploy/productpage-v1 DETAILS_HOSTNAME=details.bookinfo-backends.svc.cluster.local
-kubectl --context ${CLUSTER1} -n bookinfo-frontends set env deploy/productpage-v1 REVIEWS_HOSTNAME=reviews.bookinfo-backends.svc.cluster.local
-# Update the reviews service to display where it is coming from
-kubectl --context ${CLUSTER1} -n bookinfo-backends set env deploy/reviews-v1 CLUSTER_NAME=${CLUSTER1}
-kubectl --context ${CLUSTER1} -n bookinfo-backends set env deploy/reviews-v2 CLUSTER_NAME=${CLUSTER1}
+kubectl --context ${CLUSTER1} create namespace gloo-mesh-addons
+kubectl --context ${CLUSTER1} label namespace gloo-mesh-addons istio.io/rev=1-16 --overwrite
 ```
 
+Then, you can deploy the addons on the cluster(s) using Helm:
 
-<!--bash
-until [[ $(kubectl --context ${CLUSTER1} -n bookinfo-frontends get deploy -o json | jq '[.items[].status.readyReplicas] | add') -eq 1 ]]; do
-  sleep 1
-done
-until [[ $(kubectl --context ${CLUSTER1} -n bookinfo-backends get deploy -o json | jq '[.items[].status.readyReplicas] | add') -eq 4 ]]; do
-  sleep 1
-done
--->
-
-You can check that the app is running using the following command:
-
-```
-kubectl --context ${CLUSTER1} -n bookinfo-frontends get pods && kubectl --context ${CLUSTER1} -n bookinfo-backends get pods
+```bash
+helm upgrade --install gloo-mesh-agent-addons gloo-mesh-agent/gloo-mesh-agent \
+  --namespace gloo-mesh-addons \
+  --kube-context=${CLUSTER1} \
+  --set cluster=cluster1 \
+  --set glooMeshAgent.enabled=false \
+  --set glooMeshPortalServer.enabled=true \
+  --set rate-limiter.enabled=true \
+  --set ext-auth-service.enabled=true \
+  --version 2.2.5
 ```
 
-Note that we deployed the `productpage` service in the `bookinfo-frontends` namespace and the other services in the `bookinfo-backends` namespace.
+This is how to environment looks like now:
 
-And we deployed the `v1` and `v2` versions of the `reviews` microservice, not the `v3` version.
+![Gloo Mesh Workshop Environment](images/steps/deploy-gloo-mesh-addons/gloo-mesh-workshop-environment.svg)
 
-<!--bash
-cat <<'EOF' > ./test.js
-const helpers = require('./tests/chai-exec');
+## Lab 5 - Create the gateways workspace <a name="lab-5---create-the-gateways-workspace-"></a>
 
-describe("Bookinfo app", () => {
-  let cluster = process.env.CLUSTER1
-  let deployments = ["productpage-v1"];
-  deployments.forEach(deploy => {
-    it(deploy + ' pods are ready in ' + cluster, () => helpers.checkDeployment({ context: cluster, namespace: "bookinfo-frontends", k8sObj: deploy }));
-  });
-  deployments = ["ratings-v1", "details-v1", "reviews-v1", "reviews-v2"];
-  deployments.forEach(deploy => {
-    it(deploy + ' pods are ready in ' + cluster, () => helpers.checkDeployment({ context: cluster, namespace: "bookinfo-backends", k8sObj: deploy }));
-  });
-});
+We're going to create a workspace for the team in charge of the Gateways.
+
+The platform team needs to create the corresponding `Workspace` Kubernetes objects in the Gloo Mesh management cluster.
+
+Let's create the `gateways` workspace which corresponds to the `istio-gateways` and the `gloo-mesh-addons` namespaces on the cluster(s):
+
+```bash
+kubectl apply --context ${CLUSTER1} -f- <<EOF
+apiVersion: admin.gloo.solo.io/v2
+kind: Workspace
+metadata:
+  name: gateways
+  namespace: gloo-mesh
+spec:
+  workloadClusters:
+  - name: cluster1
+    namespaces:
+    - name: istio-gateways
+    - name: gloo-mesh-addons
 EOF
-echo "executing test dist/gloo-mesh-2-0-gateway/build/templates/steps/apps/bookinfo/deploy-bookinfo/tests/check-bookinfo.test.js.liquid"
-tempfile=$(mktemp)
-echo "saving errors in ${tempfile}"
-mocha ./test.js --timeout 10000 --retries=50 --bail 2> ${tempfile} || { cat ${tempfile} && exit 1; }
--->
+```
+
+Then, the Gateway team creates a `WorkspaceSettings` Kubernetes object in one of the namespaces of the `gateways` workspace (so the `istio-gateways` or the `gloo-mesh-addons` namespace):
+
+```bash
+kubectl apply --context ${CLUSTER1} -f- <<EOF
+apiVersion: admin.gloo.solo.io/v2
+kind: WorkspaceSettings
+metadata:
+  name: gateways
+  namespace: istio-gateways
+spec:
+  importFrom:
+  - workspaces:
+    - selector:
+        allow_ingress: "true"
+    resources:
+    - kind: SERVICE
+    - kind: ALL
+      labels:
+        expose: "true"
+  exportTo:
+  - workspaces:
+    - selector:
+        allow_ingress: "true"
+    resources:
+    - kind: SERVICE
+EOF
+```
+
+The Gateway team has decided to import the following from the workspaces that have the label `allow_ingress` set to `true` (using a selector):
+- all the Kubernetes services exported by these workspaces
+- all the resources (RouteTables, VirtualDestination, ...) exported by these workspaces that have the label `expose` set to `true`
 
 
-
-
-## Lab 5 - Deploy the httpbin demo app <a name="lab-5---deploy-the-httpbin-demo-app-"></a>
+## Lab 6 - Deploy the httpbin demo app <a name="lab-6---deploy-the-httpbin-demo-app-"></a>
 
 We're going to deploy the httpbin application to demonstrate several features of Gloo Mesh.
 
 You can find more information about this application [here](http://httpbin.org/).
-
-
-
-
 
 Run the following commands to deploy the httpbin app on `cluster1`. The deployment will be called `not-in-mesh` and won't have the sidecar injected (because we don't label the namespace).
 
@@ -789,112 +791,20 @@ echo "saving errors in ${tempfile}"
 mocha ./test.js --timeout 10000 --retries=50 --bail 2> ${tempfile} || { cat ${tempfile} && exit 1; }
 -->
 
+## Lab 7 - Create the httpbin workspace <a name="lab-7---create-the-httpbin-workspace-"></a>
 
-
-## Lab 6 - Deploy Gloo Mesh Addons <a name="lab-6---deploy-gloo-mesh-addons-"></a>
-
-To use the Gloo Mesh Gateway advanced features (external authentication, rate limiting, ...), you need to install the Gloo Mesh addons.
-
-First, you need to create a namespace for the addons, with Istio injection enabled:
-
-```bash
-kubectl --context ${CLUSTER1} create namespace gloo-mesh-addons
-kubectl --context ${CLUSTER1} label namespace gloo-mesh-addons istio.io/rev=1-16 --overwrite
-```
-
-Then, you can deploy the addons on the cluster(s) using Helm:
-
-```bash
-helm upgrade --install gloo-mesh-agent-addons gloo-mesh-agent/gloo-mesh-agent \
-  --namespace gloo-mesh-addons \
-  --kube-context=${CLUSTER1} \
-  --set cluster=cluster1 \
-  --set glooMeshAgent.enabled=false \
-  --set glooMeshPortalServer.enabled=true \
-  --set rate-limiter.enabled=true \
-  --set ext-auth-service.enabled=true \
-  --version 2.2.5
-```
-
-This is how to environment looks like now:
-
-![Gloo Mesh Workshop Environment](images/steps/deploy-gloo-mesh-addons/gloo-mesh-workshop-environment.svg)
-
-
-
-
-## Lab 7 - Create the gateways workspace <a name="lab-7---create-the-gateways-workspace-"></a>
-
-We're going to create a workspace for the team in charge of the Gateways.
+We're going to create a workspace for the team in charge of the httpbin application.
 
 The platform team needs to create the corresponding `Workspace` Kubernetes objects in the Gloo Mesh management cluster.
 
-Let's create the `gateways` workspace which corresponds to the `istio-gateways` and the `gloo-mesh-addons` namespaces on the cluster(s):
+Let's create the `httpbin` workspace which corresponds to the `httpbin` namespace on `cluster1`:
 
 ```bash
 kubectl apply --context ${CLUSTER1} -f- <<EOF
 apiVersion: admin.gloo.solo.io/v2
 kind: Workspace
 metadata:
-  name: gateways
-  namespace: gloo-mesh
-spec:
-  workloadClusters:
-  - name: cluster1
-    namespaces:
-    - name: istio-gateways
-    - name: gloo-mesh-addons
-EOF
-```
-
-Then, the Gateway team creates a `WorkspaceSettings` Kubernetes object in one of the namespaces of the `gateways` workspace (so the `istio-gateways` or the `gloo-mesh-addons` namespace):
-
-```bash
-kubectl apply --context ${CLUSTER1} -f- <<EOF
-apiVersion: admin.gloo.solo.io/v2
-kind: WorkspaceSettings
-metadata:
-  name: gateways
-  namespace: istio-gateways
-spec:
-  importFrom:
-  - workspaces:
-    - selector:
-        allow_ingress: "true"
-    resources:
-    - kind: SERVICE
-    - kind: ALL
-      labels:
-        expose: "true"
-  exportTo:
-  - workspaces:
-    - selector:
-        allow_ingress: "true"
-    resources:
-    - kind: SERVICE
-EOF
-```
-
-The Gateway team has decided to import the following from the workspaces that have the label `allow_ingress` set to `true` (using a selector):
-- all the Kubernetes services exported by these workspaces
-- all the resources (RouteTables, VirtualDestination, ...) exported by these workspaces that have the label `expose` set to `true`
-
-
-
-## Lab 8 - Create the bookinfo workspace <a name="lab-8---create-the-bookinfo-workspace-"></a>
-
-We're going to create a workspace for the team in charge of the Bookinfo application.
-
-The platform team needs to create the corresponding `Workspace` Kubernetes objects in the Gloo Mesh management cluster.
-
-Let's create the `bookinfo` workspace which corresponds to the `bookinfo-frontends` and `bookinfo-backends` namespaces on the cluster(s):
-
-```bash
-kubectl apply --context ${CLUSTER1} -f- <<EOF
-apiVersion: admin.gloo.solo.io/v2
-kind: Workspace
-metadata:
-  name: bookinfo
+  name: httpbin
   namespace: gloo-mesh
   labels:
     allow_ingress: "true"
@@ -902,20 +812,19 @@ spec:
   workloadClusters:
   - name: cluster1
     namespaces:
-    - name: bookinfo-frontends
-    - name: bookinfo-backends
+    - name: httpbin
 EOF
 ```
 
-Then, the Bookinfo team creates a `WorkspaceSettings` Kubernetes object in one of the namespaces of the `bookinfo` workspace (so the `bookinfo-frontends` or the `bookinfo-backends` namespace):
+Then, the Httpbin team creates a `WorkspaceSettings` Kubernetes object in one of the namespaces of the `httpbin` workspace:
 
 ```bash
 kubectl apply --context ${CLUSTER1} -f- <<EOF
 apiVersion: admin.gloo.solo.io/v2
 kind: WorkspaceSettings
 metadata:
-  name: bookinfo
-  namespace: bookinfo-frontends
+  name: httpbin
+  namespace: httpbin
 spec:
   importFrom:
   - workspaces:
@@ -928,30 +837,20 @@ spec:
     resources:
     - kind: SERVICE
       labels:
-        app: productpage
-    - kind: SERVICE
-      labels:
-        app: reviews
+        app: in-mesh
     - kind: ALL
       labels:
         expose: "true"
 EOF
 ```
 
-The Bookinfo team has decided to export the following to the `gateway` workspace (using a reference):
-- the `productpage` and the `reviews` Kubernetes services
+The Httpbin team has decided to export the following to the `gateway` workspace (using a reference):
+- the `in-mesh` Kubernetes service
 - all the resources (RouteTables, VirtualDestination, ...) that have the label `expose` set to `true`
 
-This is how the environment looks like with the workspaces:
+## Lab 8 - Expose the httpbin service <a name="lab-8---expose-the-httpbin-service-"></a>
 
-![Gloo Mesh Workspaces](images/steps/create-bookinfo-workspace/gloo-mesh-workspaces.svg)
-
-
-
-
-## Lab 9 - Expose the productpage through a gateway <a name="lab-9---expose-the-productpage-through-a-gateway-"></a>
-
-In this step, we're going to expose the `productpage` service through the Ingress Gateway using Gloo Mesh.
+In this step, we're going to expose the `httpbin` service through the Ingress Gateway using Gloo Mesh.
 
 The Gateway team must create a `VirtualGateway` to configure the Istio Ingress Gateway in cluster1 to listen to incoming requests.
 
@@ -1006,50 +905,42 @@ spec:
 EOF
 ```
 
-In this example, you can see that the Gateway team is delegating the routing details to the `bookinfo` and `httpbin` workspaces. The teams in charge of these workspaces can expose their services through the gateway.
+In this example, you can see that the Gateway team is delegating the routing details to the `httpbin` workspace. The teams in charge of these workspaces can expose their services through the gateway.
 
-The Gateway team can use this main `RouteTable` to enforce a global WAF policy, but also to have control on which hostnames and paths can be used by each application team.
+The Gateway team can use this main `RouteTable` to enforce a global policy, but also to have control on which hostnames and paths can be used by each application team.
 
-Then, the Bookinfo team can create a `RouteTable` to determine how they want to handle the traffic.
+Now the httpbin team can create a `RouteTable` to determine how they want to handle the traffic.
 
 ```bash
 kubectl --context ${CLUSTER1} apply -f - <<EOF
 apiVersion: networking.gloo.solo.io/v2
 kind: RouteTable
 metadata:
-  name: productpage
-  namespace: bookinfo-frontends
+  name: httpbin
+  namespace: httpbin
   labels:
     expose: "true"
 spec:
   http:
-    - name: productpage
+    - name: httpbin
       matchers:
       - uri:
-          exact: /productpage
-      - uri:
-          prefix: /static
-      - uri:
-          exact: /login
-      - uri:
-          exact: /logout
-      - uri:
-          prefix: /api/v1/products
+          exact: /get
       forwardTo:
         destinations:
-          - ref:
-              name: productpage
-              namespace: bookinfo-frontends
-            port:
-              number: 9080
+        - ref:
+            name: in-mesh
+            namespace: httpbin
+          port:
+            number: 8000
 EOF
 ```
 
-You should now be able to access the `productpage` application through the browser.
+You should now be able to access the `httpbin` application through the browser.
 
-Get the URL to access the `productpage` service using the following command:
+Get the URL to access the `httpbin` service using the following command:
 ```
-echo "http://${ENDPOINT_HTTP_GW_CLUSTER1}/productpage"
+echo "http://${ENDPOINT_HTTP_GW_CLUSTER1}/get"
 ```
 
 <!--bash
@@ -1120,10 +1011,10 @@ spec:
 EOF
 ```
 
-You can now access the `productpage` application securely through the browser.
-Get the URL to access the `productpage` service using the following command:
+You can now access the `httpbin` application securely through the browser.
+Get the URL to access the `httpbin` service using the following command:
 ```
-echo "https://${ENDPOINT_HTTPS_GW_CLUSTER1}/productpage"
+echo "https://${ENDPOINT_HTTPS_GW_CLUSTER1}/get"
 ```
 
 <!--bash
@@ -1145,117 +1036,7 @@ This diagram shows the flow of the request (through the Istio Ingress Gateway):
 ![Gloo Mesh Gateway](images/steps/gateway-expose/gloo-mesh-gateway.svg)
 
 
-
-
-## Lab 10 - Create the httpbin workspace <a name="lab-10---create-the-httpbin-workspace-"></a>
-
-We're going to create a workspace for the team in charge of the httpbin application.
-
-The platform team needs to create the corresponding `Workspace` Kubernetes objects in the Gloo Mesh management cluster.
-
-Let's create the `httpbin` workspace which corresponds to the `httpbin` namespace on `cluster1`:
-
-```bash
-kubectl apply --context ${CLUSTER1} -f- <<EOF
-apiVersion: admin.gloo.solo.io/v2
-kind: Workspace
-metadata:
-  name: httpbin
-  namespace: gloo-mesh
-  labels:
-    allow_ingress: "true"
-spec:
-  workloadClusters:
-  - name: cluster1
-    namespaces:
-    - name: httpbin
-EOF
-```
-
-Then, the Httpbin team creates a `WorkspaceSettings` Kubernetes object in one of the namespaces of the `httpbin` workspace:
-
-```bash
-kubectl apply --context ${CLUSTER1} -f- <<EOF
-apiVersion: admin.gloo.solo.io/v2
-kind: WorkspaceSettings
-metadata:
-  name: httpbin
-  namespace: httpbin
-spec:
-  importFrom:
-  - workspaces:
-    - name: gateways
-    resources:
-    - kind: SERVICE
-  exportTo:
-  - workspaces:
-    - name: gateways
-    resources:
-    - kind: SERVICE
-      labels:
-        app: in-mesh
-    - kind: ALL
-      labels:
-        expose: "true"
-EOF
-```
-
-The Httpbin team has decided to export the following to the `gateway` workspace (using a reference):
-- the `in-mesh` Kubernetes service
-- all the resources (RouteTables, VirtualDestination, ...) that have the label `expose` set to `true`
-
-
-
-
-## Lab 11 - Expose the httpbin service <a name="lab-11---expose-the-httpbin-service-"></a>
-
-Apply the following `RouteTable` to expose the `httpbin` service:
-
-```bash
-kubectl --context ${CLUSTER1} apply -f - <<EOF
-apiVersion: networking.gloo.solo.io/v2
-kind: RouteTable
-metadata:
-  name: httpbin
-  namespace: httpbin
-  labels:
-    expose: "true"
-spec:
-  http:
-    - name: httpbin
-      matchers:
-      - uri:
-          exact: /get
-      forwardTo:
-        destinations:
-        - ref:
-            name: in-mesh
-            namespace: httpbin
-          port:
-            number: 8000
-EOF
-```
-
-<!--bash
-cat <<'EOF' > ./test.js
-const helpersHttp = require('./tests/chai-http');
-
-describe("httpbin from the local service", () => {
-  it('Checking text \'X-Amzn-Trace-Id\' not in ' + process.env.CLUSTER1, () => helpersHttp.checkBody({ host: 'https://' + process.env.ENDPOINT_HTTPS_GW_CLUSTER1, path: '/get', body: 'X-Amzn-Trace-Id', match: false }));
-})
-EOF
-echo "executing test dist/gloo-mesh-2-0-gateway/build/templates/steps/apps/httpbin/gateway-external-service/tests/httpbin-from-local.test.js.liquid"
-tempfile=$(mktemp)
-echo "saving errors in ${tempfile}"
-mocha ./test.js --timeout 10000 --retries=50 --bail 2> ${tempfile} || { cat ${tempfile} && exit 1; }
--->
-
-This diagram shows the flow of the requests :
-
-![Gloo Mesh Gateway EXternal Service](images/steps/gateway-external-service/gloo-mesh-gateway-external-service.svg)
-
-
-## Lab 12 - Securing Application access with OAuth <a name="lab-12---securing-application-access-with-oauth-"></a>
+## Lab 9 - Securing Application access with OAuth <a name="lab-9---securing-application-access-with-oauth-"></a>
 In this step, we're going to secure the access to the `httpbin` service using OAuth. Integrating an app with extauth consists of a few steps:
 ```
 - create app registration in your OIDC
@@ -1415,7 +1196,7 @@ If you are using the example client config above, below are a few users that you
 - Username: test@solo.io // Password: gloo-public
 - Username: jdoe@gmail.com // Password: gloo-public
 
-## Lab 13 - Integrating with OPA <a name="lab-12---integrating-with-opa-"></a>
+## Lab 10 - Integrating with OPA <a name="lab-10---integrating-with-opa-"></a>
 
 ### OPA inputs
 You can also perform authorization using OPA. Gloo Mesh's OPA integration populates an input document to use in your OPA policies which allows you to easily write rego policy
@@ -1530,8 +1311,29 @@ This is because the test@solo.io user's claims would look something like this:
 }
 ```
 
+Let's revert back to the original policy for now
+```bash
+kubectl --context ${CLUSTER1} apply -f - <<EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: httpbin-opa
+  namespace: httpbin
+data:
+  policy.rego: |-
+    package test
+
+    default allow = false
+
+    allow {
+        [header, payload, signature] = io.jwt.decode(input.http_request.headers.jwt)
+        endswith(payload["email"], "@solo.io")
+    }
+EOF
+```
+
 ### Use OPA to enforce a specific HTTP method
-Let's continue to expand on our example by enforcing different HTTP methods for our two types of users
+Let's continue to expand on our example by enforcing different HTTP methods in our rego policy
 ```bash
 kubectl --context ${CLUSTER1} apply -f - <<EOF
 apiVersion: v1
@@ -1553,18 +1355,10 @@ data:
              input.http_request.method == "DELETE",
     })
     }
-    allow {
-        [header, payload, signature] = io.jwt.decode(input.http_request.headers.jwt)
-        endswith(payload["sub"], "@solo.io")
-        any({input.http_request.method == "POST",
-             input.http_request.method == "PUT",
-             input.http_request.method == "DELETE",
-    })
-    }
 EOF
 ```
 
-If you refresh the browser where the `@solo.io` or `@solo.io` user is logged in, we should now see a `403 Error - You don't have authorization to view this page`. This is because we are not allowing the `GET` method for either of those matches in our OPA policy
+If you refresh the browser where the `@solo.io` user is logged in, we should now see a `403 Error - You don't have authorization to view this page`. This is because we are not allowing the `GET` method for either of those matches in our OPA policy
 
 Let's fix that
 ```bash
@@ -1583,15 +1377,6 @@ data:
     allow {
         [header, payload, signature] = io.jwt.decode(input.http_request.headers.jwt)
         endswith(payload["email"], "@solo.io")
-        any({input.http_request.method == "GET",
-             input.http_request.method == "POST",
-             input.http_request.method == "PUT",
-             input.http_request.method == "DELETE",
-    })
-    }
-    allow {
-        [header, payload, signature] = io.jwt.decode(input.http_request.headers.jwt)
-        endswith(payload["sub"], "@solo.io")
         any({input.http_request.method == "GET",
              input.http_request.method == "POST",
              input.http_request.method == "PUT",
@@ -1622,7 +1407,7 @@ data:
 
     allow {
         [header, payload, signature] = io.jwt.decode(input.http_request.headers.jwt)
-        endswith(payload["sub"], "@solo.io")
+        endswith(payload["email"], "@solo.io")
         any({input.http_request.path == "/get",
         startswith(input.http_request.path, "/anything")
     })
@@ -1634,8 +1419,8 @@ data:
     }
     allow {
         [header, payload, signature] = io.jwt.decode(input.http_request.headers.jwt)
-        endswith(payload["email"], "@solo.io")
-        input.http_request.path == "/anything/protected"
+        endswith(payload["email"], "@gmail.com")
+        input.http_request.path == "/anything/opa-protected"
         any({input.http_request.method == "GET",
              input.http_request.method == "POST",
              input.http_request.method == "PUT",
@@ -1646,10 +1431,10 @@ EOF
 ```
 If you refresh the browser where the `@solo.io` user is logged in, we should be able to access the `/get` endpoint as well as any path with the prefix `/anything`. Try and access `/anything/foo` for example - it should work.
 
-If you refresh the browser where the `@solo.io` user is logged in, we should now see a `403 Error - You don't have authorization to view this page` if you access anything other than the `/anything/protected` endpoint
+If you refresh the browser where the `@gmail.com` user is logged in, we should now see a `403 Error - You don't have authorization to view this page` if you access anything other than the `/anything/opa-protected` endpoint
 
 ### cleanup extauthpolicy for next labs
-In the next labs we will explore using `JWTPolicy` to extract validated claims into new arbitrary headers and configure our OPA to leverage them. For now, we can remove the `httpbin-opa` policy to validate behavior before reimplementing it.
+If you need to clean up the extauth policy, simply just remove it with the command below
 ```
 kubectl --context ${CLUSTER1} -n httpbin delete ExtAuthPolicy httpbin-opa
 ```
@@ -1659,7 +1444,7 @@ This diagram shows the flow of the request (with the Istio ingress gateway lever
 ![Gloo Mesh Gateway Extauth](images/steps/gateway-extauth-oauth/gloo-mesh-gateway-extauth.svg)
 
 
-## Lab 14 - Apply rate limiting to the Gateway <a name="lab-14---apply-rate-limiting-to-the-gateway-"></a>
+## Lab 11 - Apply rate limiting to the Gateway <a name="lab-11---apply-rate-limiting-to-the-gateway-"></a>
 
 In this lab, lets explore adding rate limiting to our httpbin route
 
@@ -1771,8 +1556,9 @@ spec:
 EOF
 ```
 
-Finally, you need to update the `RouteTable` to use this `RateLimitPolicy`:
+Now refresh the httpbin web page multiple times. You should see a 429 error after 5 refreshes
 
+Note: If you scroll up, notice that we had already preloaded this route table with the `ratelimited: "true"` label in an earlier lab. When we applied our rate limiting policy, Gloo Platform automatically picked up on this label and applied our RL configuration for us. Below is the `RouteTable` again for reference:
 ```bash
 kubectl --context ${CLUSTER1} apply -f - <<EOF
 apiVersion: networking.gloo.solo.io/v2
@@ -1780,18 +1566,13 @@ kind: RouteTable
 metadata:
   name: httpbin
   namespace: httpbin
+  labels:
+    expose: "true"
 spec:
-  hosts:
-    - '*'
-  virtualGateways:
-    - name: north-south-gw
-      namespace: istio-gateways
-      cluster: cluster1
-  workloadSelectors: []
   http:
-    - name: httpbin-all
+    - name: httpbin
       labels:
-        route_name: "httpbin-all"
+        route_name: "httpbin"
         ratelimited: "true"
       matchers:
       - uri:
@@ -1811,9 +1592,6 @@ spec:
             number: 8000
 EOF
 ```
-
-Refresh the web page multiple times. You should see a 429 error after 5 refreshes
-
 
 This diagram shows the flow of the request (with the Istio ingress gateway leveraging the `rate limiter` Pod to determine if the request should be allowed):
 
@@ -1858,9 +1636,7 @@ kubectl --context ${CLUSTER1} -n httpbin delete ratelimitserverconfig httpbin
 kubectl --context ${CLUSTER1} -n httpbin delete ratelimitserversettings rate-limit-server
 ```
 
-
-
-## Lab 15 - Upgrade Istio using Gloo Mesh Lifecycle Manager <a name="lab-15---upgrade-istio-using-gloo-mesh-lifecycle-manager-"></a>
+## Lab 12 - Upgrade Istio using Gloo Mesh Lifecycle Manager <a name="lab-12---upgrade-istio-using-gloo-mesh-lifecycle-manager-"></a>
 
 Set the variables corresponding to the old and new revision tags:
 
