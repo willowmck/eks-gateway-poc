@@ -1391,7 +1391,7 @@ Now we should be able to access our app again.
 ### Enforce paths with OPA
 Let's continue to expand on our example by enforcing a specified path for our users
 
-Here we will modify our rego rule so that users with the `email` claim containing `@solo.io` can access the `/get` endpoint as well as any path with the prefix `/anything`, while users with the `email` claim containing `@solo.io` can only access specifically the `/anything/protected` endpoint
+Here we will modify our rego rule so that users with the `email` claim containing `@solo.io` can access the `/get` endpoint as well as any path with the prefix `/anything`, while users with the `email` claim containing `@gmail.com` can only access specifically the `/anything/opa-protected` endpoint
 ```bash
 kubectl --context ${CLUSTER1} apply -f - <<EOF
 apiVersion: v1
