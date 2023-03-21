@@ -17,8 +17,8 @@
 * [Lab 9 - Securing Application access with ExtAuthPolicy](#lab-9---securing-application-access-with-extauthpolicy-)
 * [Lab 10 - Integrating with OPA](#lab-10---integrating-with-opa-)
 * [Lab 11 - Apply rate limiting to the Gateway](#lab-11---apply-rate-limiting-to-the-gateway-)
-* [Lab 12 - Upgrade Istio using Gloo Mesh Lifecycle Manager](#lab-12---upgrade-istio-using-gloo-mesh-lifecycle-manager-)
-
+* [Lab 12 - Exploring Istio, Envoy Proxy Config, and Metrics](#lab-12---exploring-istio-envoy-proxy-config-and-metrics-)
+* [Lab 13 - Upgrade Istio using Gloo Mesh Lifecycle Manager](#lab-13---upgrade-istio-using-gloo-mesh-lifecycle-manager-)
 
 
 ## Introduction <a name="introduction"></a>
@@ -1391,11 +1391,82 @@ And also delete the different objects we've created:
 ```bash
 kubectl --context ${CLUSTER1} -n httpbin delete ratelimitpolicy httpbin
 kubectl --context ${CLUSTER1} -n httpbin delete ratelimitclientconfig httpbin
-kubectl --context ${CLUSTER1} -n httpbin delete ratelimitserverconfig httpbin
+kubectl --context ${CLUSTER1} -n gloo-mesh-addons delete ratelimitserverconfig httpbin
 kubectl --context ${CLUSTER1} -n httpbin delete ratelimitserversettings rate-limit-server
 ```
 
-## Lab 12 - Upgrade Istio using Gloo Mesh Lifecycle Manager <a name="lab-12---upgrade-istio-using-gloo-mesh-lifecycle-manager-"></a>
+## Lab 12 - Exploring Istio, Envoy Proxy Config, and Metrics <a name="lab-12---exploring-istio-envoy-proxy-config-and-metrics-"></a>
+
+## Get an overview of your mesh
+```
+istioctl proxy-status
+```
+
+Example output
+```
+% istioctl proxy-status
+NAME                                                          CLUSTER      CDS        LDS        EDS        RDS          ECDS         ISTIOD                         VERSION
+ext-auth-service-7fccf5b78f-mb6wb.gloo-mesh-addons            cluster1     SYNCED     SYNCED     SYNCED     SYNCED       NOT SENT     istiod-1-17-94858bc8-9chtf     1.17.1-solo
+in-mesh-5978df87cc-mfmtx.httpbin                              cluster1     SYNCED     SYNCED     SYNCED     SYNCED       NOT SENT     istiod-1-17-94858bc8-9chtf     1.17.1-solo
+istio-eastwestgateway-1-17-8d85c9f97-s88gt.istio-gateways     cluster1     SYNCED     SYNCED     SYNCED     NOT SENT     NOT SENT     istiod-1-17-94858bc8-9chtf     1.17.1-solo
+istio-ingressgateway-1-17-79b44d8bb-vth6t.istio-gateways      cluster1     SYNCED     SYNCED     SYNCED     SYNCED       NOT SENT     istiod-1-17-94858bc8-9chtf     1.17.1-solo
+rate-limiter-66676f8d5b-wrcd7.gloo-mesh-addons                cluster1     SYNCED     SYNCED     SYNCED     SYNCED       NOT SENT     istiod-1-17-94858bc8-9chtf     1.17.1-solo
+redis-669c97869d-hjtfp.gloo-mesh-addons                       cluster1     SYNCED     SYNCED     SYNCED     SYNCED       NOT SENT     istiod-1-17-94858bc8-9chtf     1.17.1-solo
+```
+
+## Retrieve diffs between Envoy and Istiod
+```
+% istioctl proxy-status deploy/in-mesh -n httpbin
+Clusters Match
+Listeners Match
+Routes Match (RDS last loaded at Tue, 14 Jun 2022 20:43:02 PDT)
+```
+
+## grab envoy stats of sidecar using istioctl
+```
+istioctl experimental envoy-stats <pod> --namespace <namespace> 
+
+istioctl experimental envoy-stats deploy/<deployment_name> --namespace <namespace> 
+```
+
+For example try this on the httpbin application
+```
+istioctl experimental envoy-stats deploy/in-mesh --namespace httpbin
+```
+
+### output in prometheus format
+Add the `--output prom` flag to output metrics in prometheus format
+```
+istioctl experimental envoy-stats deploy/in-mesh --namespace httpbin --output prom
+```
+
+## Get all Envoy proxy config
+```
+istioctl proxy-config all -n <namespace> <pod> -o <output>
+```
+
+Example:
+```
+istioctl proxy-config all -n httpbin deploy/in-mesh
+```
+
+### Retrieve just the endpoint configuration
+```
+istioctl proxy-config endpoint -n httpbin deploy/in-mesh
+```
+
+## Inspect bootstrap configuration
+```
+istioctl proxy-config bootstrap -n istio-gateways deploy/istio-ingressgateway-1-16
+```
+
+## Create an Istio Bug Report
+```
+istioctl bug-report
+```
+See output named `bug-report.tar.gz`
+
+## Lab 13 - Upgrade Istio using Gloo Mesh Lifecycle Manager <a name="lab-13---upgrade-istio-using-gloo-mesh-lifecycle-manager-"></a>
 
 Set the variables corresponding to the old and new revision tags:
 
