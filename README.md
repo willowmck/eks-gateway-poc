@@ -23,7 +23,7 @@ source ./scripts/assert.sh
 * [Lab 6 - Deploy the httpbin demo app](#lab-6---deploy-the-httpbin-demo-app-)
 * [Lab 7 - Create the httpbin workspace](#lab-7---create-the-httpbin-workspace-)
 * [Lab 8 - Expose the httpbin service](#lab-8---expose-the-httpbin-service-)
-* [Lab 9 - Securing Application access with OAuth](#lab-9---securing-application-access-with-oauth-)
+* [Lab 9 - Securing Application access with ExtAuthPolicy](#lab-9---securing-application-access-with-extauthpolicy-)
 * [Lab 10 - Integrating with OPA](#lab-10---integrating-with-opa-)
 * [Lab 11 - Apply rate limiting to the Gateway](#lab-11---apply-rate-limiting-to-the-gateway-)
 * [Lab 12 - Upgrade Istio using Gloo Mesh Lifecycle Manager](#lab-12---upgrade-istio-using-gloo-mesh-lifecycle-manager-)
@@ -1036,7 +1036,7 @@ This diagram shows the flow of the request (through the Istio Ingress Gateway):
 ![Gloo Mesh Gateway](images/steps/gateway-expose/gloo-mesh-gateway.svg)
 
 
-## Lab 9 - Securing Application access with OAuth <a name="lab-9---securing-application-access-with-oauth-"></a>
+## Lab 9 - Securing Application access with ExtAuthPolicy <a name="lab-9---securing-application-access-with-extauthpolicy-"></a>
 In this step, we're going to secure the access to the `httpbin` service using OAuth. Integrating an app with extauth consists of a few steps:
 ```
 - create app registration in your OIDC
