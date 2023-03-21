@@ -18,7 +18,10 @@
 * [Lab 10 - Integrating with OPA](#lab-10---integrating-with-opa-)
 * [Lab 11 - Apply rate limiting to the Gateway](#lab-11---apply-rate-limiting-to-the-gateway-)
 * [Lab 12 - Exploring Istio, Envoy Proxy Config, and Metrics](#lab-12---exploring-istio-envoy-proxy-config-and-metrics-)
-* [Lab 13 - Upgrade Istio using Gloo Mesh Lifecycle Manager](#lab-13---upgrade-istio-using-gloo-mesh-lifecycle-manager-)
+* [Lab 13 - Exploring the Opentelemetry Pipeline](#lab-13---exploring-the-opentelemetry-pipeline-)
+* [Lab 14 - Upgrade Istio using Gloo Mesh Lifecycle Manager](#lab-14---upgrade-istio-using-gloo-mesh-lifecycle-manager-)
+
+
 
 
 ## Introduction <a name="introduction"></a>
@@ -397,7 +400,7 @@ helm upgrade --install gloo-mesh-agent-addons gloo-mesh-agent/gloo-mesh-agent \
 
 This is how to environment looks like now:
 
-![Gloo Mesh Workshop Environment](images/steps/deploy-gloo-mesh-addons/gloo-mesh-workshop-environment.svg)
+![Gloo Mesh Workshop Environment](images/arch/arch-1a.png)
 
 ## Lab 5 - Create the gateways workspace <a name="lab-5---create-the-gateways-workspace-"></a>
 
@@ -792,7 +795,7 @@ echo "https://${ENDPOINT_HTTPS_GW_CLUSTER1}/get"
 
 This diagram shows the flow of the request (through the Istio Ingress Gateway):
 
-![Gloo Mesh Gateway](images/steps/gateway-expose/gloo-mesh-gateway.svg)
+![Gloo Mesh Gateway](images/arch/arch-1b.png)
 
 
 ## Lab 9 - Securing Application access with ExtAuthPolicy <a name="lab-9---securing-application-access-with-extauthpolicy-"></a>
@@ -969,8 +972,6 @@ In this lab, we will make use of the `input.http_request` parameter in our OPA p
 Instead of coupling the `oauth2` config with the `opa` config in a single `ExtAuthPolicy`, here we will separate the app to decouple the APIs from apps
 
 ## High Level Workflow
-![Gloo Mesh Dashboard OIDC](images/runbook9a.png)
-
 First we will create a new `ExtAuthPolicy` object to add the OPA filter. Note the use of the `applyToDestinations` in this `ExtAuthPolicy` instead of `applyToRoutes`. This matcher allows us to specify a destination where we want to apply our policy to, rather than on a Route. Note that the below uses a direct reference, but label matchers would work as well.
 
 Lets apply the following policy
@@ -1200,8 +1201,7 @@ kubectl --context ${CLUSTER1} -n httpbin delete ExtAuthPolicy httpbin-opa
 
 This diagram shows the flow of the request (with the Istio ingress gateway leveraging the `extauth` Pod to authorize the request):
 
-![Gloo Mesh Gateway Extauth](images/steps/gateway-extauth-oauth/gloo-mesh-gateway-extauth.svg)
-
+![Gloo Mesh Dashboard OIDC](images/arch/arch-1c.png)
 
 ## Lab 11 - Apply rate limiting to the Gateway <a name="lab-11---apply-rate-limiting-to-the-gateway-"></a>
 
@@ -1354,7 +1354,7 @@ EOF
 
 This diagram shows the flow of the request (with the Istio ingress gateway leveraging the `rate limiter` Pod to determine if the request should be allowed):
 
-![Gloo Mesh Gateway Rate Limiting](images/steps/gateway-ratelimiting/gloo-mesh-gateway-rate-limiting.svg)
+![Gloo Mesh Gateway Rate Limiting](images/arch/arch-1d.png)
 
 
 ### cleanup
@@ -1463,7 +1463,47 @@ istioctl bug-report
 ```
 See output named `bug-report.tar.gz`
 
-## Lab 13 - Upgrade Istio using Gloo Mesh Lifecycle Manager <a name="lab-13---upgrade-istio-using-gloo-mesh-lifecycle-manager-"></a>
+## Lab 13 - Exploring the Opentelemetry Pipeline <a name="lab-13---exploring-the-opentelemetry-pipeline-"></a>
+
+As a part of the Gloo Platform Helm setup, we installed the Gloo OpenTelemetry Pipeline. A high level architecture of the pipeline looks like this:
+
+![otel pipeline](images/otel/metrics-architecture-otel.svg)
+
+- Gloo metrics collector agents are deployed as a daemonset in all Gloo workload clusters. The collector agents scrape metrics from workloads in your cluster, such as the Gloo agents, the Istio control plane istiod, or the Istio-injected workloads. The agents then enrich and convert the metrics. For example, the ID of the source and destination workload is added to the metrics so that you can filter the metrics for the workload that you are interested in.
+- The collector agents send the scraped metrics to the Gloo metrics gateway in the Gloo management cluster via gRPC push procedures.
+- The Prometheus server scrapes the metrics from the Gloo metrics gateway.
+
+
+To view the scrape config, take a look at the `gloo-metrics-collector-config` configmap
+```
+kubectl --context ${CLUSTER1} get configmap gloo-metrics-collector-config -n gloo-mesh -o yaml
+```
+
+To view metrics that are being sent to our metrics gateway component port-forward to the service at port 9091 with the command below
+```
+kubectl --context ${CLUSTER1} -n gloo-mesh \
+    port-forward deploy/gloo-metrics-gateway 9091
+```
+
+Navigate to https://localhost:9091/metrics to view the metrics that have been collected by the oTel pipeline
+
+
+### Using Prometheus to view oTel observability metrics
+By default, Gloo Platform configures the Prometheus Reciever for the oTel collector on each node as well as the Exporter on the Metrics Gateway to send metrics to the Prometheus service in the `gloo-mesh` namespace. The Gloo Mesh UI uses these metrics to populate it's service graph
+
+You can port-forward to the Prometheus service using the command below:
+```
+kubectl --context ${CLUSTER1} port-forward svc/prometheus-server -n gloo-mesh 9090:80
+```
+Navigate to https://localhost:9090 to access Prometheus UI
+
+In the Prometheus UI, if you navigate to the Status dropdown > Targets you should see the otel-collector details
+
+You can also query for metrics within the Prometheus UI, for example try to query the `istio_requests_total`
+
+![prometheus](images/observability/prometheus-ui.png)
+
+## Lab 14 - Upgrade Istio using Gloo Mesh Lifecycle Manager <a name="lab-14---upgrade-istio-using-gloo-mesh-lifecycle-manager-"></a>
 
 Set the variables corresponding to the old and new revision tags:
 
