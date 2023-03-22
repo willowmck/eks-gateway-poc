@@ -19,9 +19,8 @@
 * [Lab 11 - Apply rate limiting to the Gateway](#lab-11---apply-rate-limiting-to-the-gateway-)
 * [Lab 12 - Exploring Istio, Envoy Proxy Config, and Metrics](#lab-12---exploring-istio-envoy-proxy-config-and-metrics-)
 * [Lab 13 - Exploring the Opentelemetry Pipeline](#lab-13---exploring-the-opentelemetry-pipeline-)
-* [Lab 14 - Upgrade Istio using Gloo Mesh Lifecycle Manager](#lab-14---upgrade-istio-using-gloo-mesh-lifecycle-manager-)
-
-
+* [Lab 14 - Leveraging the Latency EnvoyFilter for additional performance metrics from our gateway](#lab-14---leveraging-the-latency-envoyfilter-for-additional-performance-metrics-from-our-gateway-)
+* [Lab 15 - Upgrade Istio using Gloo Mesh Lifecycle Manager](#lab-15---upgrade-istio-using-gloo-mesh-lifecycle-manager-)
 
 
 ## Introduction <a name="introduction"></a>
@@ -1503,7 +1502,82 @@ You can also query for metrics within the Prometheus UI, for example try to quer
 
 ![prometheus](images/observability/prometheus-ui.png)
 
-## Lab 14 - Upgrade Istio using Gloo Mesh Lifecycle Manager <a name="lab-14---upgrade-istio-using-gloo-mesh-lifecycle-manager-"></a>
+## Lab 14 - Leveraging the Latency EnvoyFilter for additional performance metrics from our gateway <a name="lab-14---leveraging-the-latency-envoyfilter-for-additional-performance-metrics-from-our-gateway-"></a>
+
+The Solo Istio images are packaged with an additional proxy latency filter that measures the latency incurred by the filter chain in a histogram. We can use this latency filter by deploying an `EnvoyFilter` in Istio
+
+Here we are going to aply the latency filter on our gateway at port 443
+```bash
+kubectl --context ${CLUSTER1} apply -f - <<EOF
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: latency 
+  namespace: istio-system
+spec:
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: ANY
+      listener:
+        portNumber: 443
+        filterChain:
+          filter:
+            name: "envoy.filters.network.http_connection_manager"
+            subFilter:
+              name: "envoy.filters.http.router"
+    patch:
+      operation: INSERT_FIRST
+      value:
+        name: io.solo.filters.http.proxy_latency
+        typed_config:
+          "@type": type.googleapis.com/udpa.type.v1.TypedStruct
+          type_url: "type.googleapis.com/envoy.config.filter.http.proxylatency.v2.ProxyLatency"
+          value:
+            request: "FIRST_INCOMING_FIRST_OUTGOING"
+            response: "FIRST_INCOMING_FIRST_OUTGOING"
+            measure_request_internally: true
+            emit_dynamic_metadata: true
+
+EOF
+```
+
+After you let some traffic flow through the gateway, you will be able to see proxy latency histograms corresponding to each service in the proxy envoy/prometheus stats. To get to the stats page, use this port-forward command below
+```
+kubectl --context ${CLUSTER1} port-forward deploy/istio-ingressgateway-1-16 -n istio-gateways 15000:15000
+```
+
+Now navigate to localhost:15000 in your browser. Scroll down to the stats/prometheus to view the proxy Prometheus stats. If you search for `latency` you should be able to find newly emitted metrics measuring proxy latency
+```
+envoy_cluster_proxy_latency_rq_proxy_latency_bucket{cluster_name="outbound|8000||in-mesh.httpbin.svc.cluster.local",le="0.5"} 75858
+envoy_cluster_proxy_latency_rq_proxy_latency_bucket{cluster_name="outbound|8000||in-mesh.httpbin.svc.cluster.local",le="1"} 75858
+envoy_cluster_proxy_latency_rq_proxy_latency_bucket{cluster_name="outbound|8000||in-mesh.httpbin.svc.cluster.local",le="5"} 75913
+envoy_cluster_proxy_latency_rq_proxy_latency_bucket{cluster_name="outbound|8000||in-mesh.httpbin.svc.cluster.local",le="10"} 75916
+envoy_cluster_proxy_latency_rq_proxy_latency_bucket{cluster_name="outbound|8000||in-mesh.httpbin.svc.cluster.local",le="25"} 75916
+envoy_cluster_proxy_latency_rq_proxy_latency_bucket{cluster_name="outbound|8000||in-mesh.httpbin.svc.cluster.local",le="50"} 75916
+envoy_cluster_proxy_latency_rq_proxy_latency_bucket{cluster_name="outbound|8000||in-mesh.httpbin.svc.cluster.local",le="100"} 75916
+envoy_cluster_proxy_latency_rq_proxy_latency_bucket{cluster_name="outbound|8000||in-mesh.httpbin.svc.cluster.local",le="250"} 75916
+envoy_cluster_proxy_latency_rq_proxy_latency_bucket{cluster_name="outbound|8000||in-mesh.httpbin.svc.cluster.local",le="500"} 75916
+envoy_cluster_proxy_latency_rq_proxy_latency_bucket{cluster_name="outbound|8000||in-mesh.httpbin.svc.cluster.local",le="1000"} 75916
+envoy_cluster_proxy_latency_rq_proxy_latency_bucket{cluster_name="outbound|8000||in-mesh.httpbin.svc.cluster.local",le="2500"} 75916
+envoy_cluster_proxy_latency_rq_proxy_latency_bucket{cluster_name="outbound|8000||in-mesh.httpbin.svc.cluster.local",le="5000"} 75916
+envoy_cluster_proxy_latency_rq_proxy_latency_bucket{cluster_name="outbound|8000||in-mesh.httpbin.svc.cluster.local",le="10000"} 75916
+envoy_cluster_proxy_latency_rq_proxy_latency_bucket{cluster_name="outbound|8000||in-mesh.httpbin.svc.cluster.local",le="30000"} 75916
+envoy_cluster_proxy_latency_rq_proxy_latency_bucket{cluster_name="outbound|8000||in-mesh.httpbin.svc.cluster.local",le="60000"} 75916
+envoy_cluster_proxy_latency_rq_proxy_latency_bucket{cluster_name="outbound|8000||in-mesh.httpbin.svc.cluster.local",le="300000"} 75916
+envoy_cluster_proxy_latency_rq_proxy_latency_bucket{cluster_name="outbound|8000||in-mesh.httpbin.svc.cluster.local",le="600000"} 75916
+envoy_cluster_proxy_latency_rq_proxy_latency_bucket{cluster_name="outbound|8000||in-mesh.httpbin.svc.cluster.local",le="1800000"} 75916
+envoy_cluster_proxy_latency_rq_proxy_latency_bucket{cluster_name="outbound|8000||in-mesh.httpbin.svc.cluster.local",le="3600000"} 75916
+envoy_cluster_proxy_latency_rq_proxy_latency_bucket{cluster_name="outbound|8000||in-mesh.httpbin.svc.cluster.local",le="+Inf"} 75916
+```
+
+Note that `le` refers to milliseconds, and the counts are cumulative. So using the example above I can derive the following:
+- 75916 total count of requests
+- 75858 requests took under 0.5ms latency
+- 75913 were less than 5ms
+- All were less than 10ms
+
+## Lab 15 - Upgrade Istio using Gloo Mesh Lifecycle Manager <a name="lab-15---upgrade-istio-using-gloo-mesh-lifecycle-manager-"></a>
 
 Set the variables corresponding to the old and new revision tags:
 
@@ -1572,9 +1646,14 @@ spec:
         meshConfig:
           accessLogFile: /dev/stdout
           defaultConfig:
+            envoyAccessLogService:
+              address: gloo-mesh-agent.gloo-mesh:9977
             proxyMetadata:
               ISTIO_META_DNS_CAPTURE: "true"
               ISTIO_META_DNS_AUTO_ALLOCATE: "true"
+            proxyStatsMatcher:
+                inclusionRegexps:
+                  - ".*proxy_latency.*"
         components:
           pilot:
             k8s:
