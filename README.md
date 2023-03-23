@@ -245,6 +245,21 @@ spec:
 EOF
 ```
 
+Note: If using the NLB controller, additional annotations may be required in the service above. Otherwise, a Classic Load Balancer will be created
+```
+annotations:
+  # uncomment below if using NLB controller
+  #service.beta.kubernetes.io/aws-load-balancer-backend-protocol: TCP
+  #service.beta.kubernetes.io/aws-load-balancer-healthcheck-healthy-threshold: "2"
+  #service.beta.kubernetes.io/aws-load-balancer-healthcheck-interval: "10"
+  #service.beta.kubernetes.io/aws-load-balancer-healthcheck-port: "15021"
+  #service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: tcp
+  #service.beta.kubernetes.io/aws-load-balancer-healthcheck-unhealthy-threshold: "2"
+  #service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: ip
+  #service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+  #service.beta.kubernetes.io/aws-load-balancer-type: nlb-ip
+```
+
 It allows us to have full control on which Istio revision we want to use.
 
 Then, we can tell Gloo Mesh to deploy the Istio control planes and the gateways in the cluster(s)
