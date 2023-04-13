@@ -1424,7 +1424,7 @@ kubectl --context ${CLUSTER1} -n gloo-mesh \
     port-forward deploy/gloo-metrics-gateway 9091
 ```
 
-Navigate to https://localhost:9091/metrics to view the metrics that have been collected by the oTel pipeline
+Navigate to http://localhost:9091/metrics to view the metrics that have been collected by the oTel pipeline
 
 
 ### Using Prometheus to view oTel observability metrics
