@@ -22,6 +22,8 @@
 * [Lab 14 - Leveraging the Latency EnvoyFilter for additional performance metrics from our gateway](#lab-14---leveraging-the-latency-envoyfilter-for-additional-performance-metrics-from-our-gateway-)
 * [Lab 15 - Upgrade Istio using Gloo Mesh Lifecycle Manager](#lab-15---upgrade-istio-using-gloo-mesh-lifecycle-manager-)
 * [Lab 16 - Configure a mutual TLS ingress gateway](#lab-16---configure-a-mutual-tls-ingress-gateway-)
+* [Lab 17 - Install and Configure Keycloak](#lab-17---install-and-configure-keycloak)
+
 
 
 ## Introduction <a name="introduction"></a>
@@ -681,7 +683,11 @@ spec:
     - name: httpbin
       matchers:
       - uri:
-          exact: /get
+          exact: /
+      - uri:
+          prefix: /get
+      - uri:
+          prefix: /anything
       forwardTo:
         destinations:
         - ref:
@@ -2154,3 +2160,254 @@ spec:
         - host: '*'
 EOF
 ```
+
+## Lab 17 - Install and Configure Keycloak <a name="lab-17---install-and-configure-keycloak-"></a>
+
+First you can use the following script to deploy your own OIDC provider `keycloak` which will allow you to secure your website with a user/pass login
+
+```bash
+./keycloak/setup.sh
+```
+
+The output should look similar to below:
+
+```bash
+% ./keycloak/setup.sh
+namespace/keycloak created
+service/keycloak created
+deployment.apps/keycloak created
+deployment.apps/keycloak condition met
+{"ingress":[{"ip":"172.24.0.3"}]}
+serviceaccount/keycloak-setup created
+rolebinding.rbac.authorization.k8s.io/keycloak-setup-admin created
+pod/keycloak-setup created
+pod/keycloak-setup condition met
+<...omitted...>
+
+Client ID: 7158eaae-caf6-4e53-adad-bc2e744da531
+Client Secret: cfb0cade-8791-4636-8830-c507f0476fc9
+secret/oauth created
+configmap/keycloak-info created
+ClientId: 7158eaae-caf6-4e53-adad-bc2e744da531
+```
+
+Set the following outputs as variables:
+
+```bash
+# set this
+export KEYCLOAK_CLIENT_SECRET="<INPUT_CLIENT_SECRET>"
+
+export KEYCLOAK_CLIENTID=$(kubectl get configmap -n gloo-mesh keycloak-info -o json | jq -r '.data."client-id"')
+export APP_CALLBACK_URL="https://localhost"
+```
+
+Check that the variables have correct values:
+```
+echo $KEYCLOAK_CLIENTID
+echo $KEYCLOAK_CLIENT_SECRET
+echo $APP_CALLBACK_URL
+```
+
+Now lets create the client secret as a kubernetes secret
+
+```bash
+kubectl --context ${CLUSTER1} apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: keycloak-client-secret
+  namespace: gloo-mesh
+type: extauth.solo.io/oauth
+data:
+  client-secret: $(echo -n ${KEYCLOAK_CLIENT_SECRET} | base64)
+EOF
+```
+
+After that, you need to create an `ExtAuthServer`, which is a CRD that define which extauth server to use. If you have been following previous labs this step may have already been completed
+
+```bash
+kubectl --context ${CLUSTER1} apply -f - <<EOF
+apiVersion: admin.gloo.solo.io/v2
+kind: ExtAuthServer
+metadata:
+  name: cluster1-ext-auth-server
+  namespace: httpbin
+spec:
+  destinationServer:
+    ref:
+      cluster: cluster1
+      name: ext-auth-service
+      namespace: gloo-mesh-addons
+    port:
+      name: grpc
+EOF
+```
+
+Now apply the extauth policy
+
+```bash
+kubectl --context ${CLUSTER1} apply -f - <<EOF
+apiVersion: security.policy.gloo.solo.io/v2
+kind: ExtAuthPolicy
+metadata:
+  name: httpbin-keycloak-extauth
+  namespace: httpbin
+spec:
+  applyToRoutes:
+  - route:
+      labels:
+        oidc: "keycloak"
+  config:
+    server:
+      name: cluster1-ext-auth-server
+      namespace: httpbin
+      cluster: cluster1
+    glooAuth:
+      configs:
+      - oauth2:
+          oidcAuthorizationCode:
+            appUrl: https://localhost
+            callbackPath: /callback
+            clientId: ${KEYCLOAK_CLIENTID}
+            clientSecretRef:
+              name: keycloak-client-secret
+              namespace: gloo-mesh
+            issuerUrl: "http://keycloak.keycloak:9000/auth/realms/master/"
+            session:
+              failOnFetchFailure: true
+              redis:
+                cookieName: keycloak-oidc-session
+                options:
+                  host: redis.gloo-mesh-addons:6379
+                allowRefreshing: true
+              cookieOptions:
+                maxAge: "90"
+                notSecure: true
+            scopes:
+            - email
+            - profile
+            headers:
+              idTokenHeader: Jwt
+EOF
+```
+
+### add callback redirect in keycloak UI
+
+Keycloak has been exposed by a LoadBalancer at http://localhost:9000/auth
+
+![](images/keycloak/keycloak1.png)
+
+Login to the adminstration console using `admin/admin`
+
+In the left sidebar, click on Clients and select the ClientID that we defined above. In this example it is `7158eaae-caf6-4e53-adad-bc2e744da531`
+
+![](images/keycloak/keycloak2.png)
+
+Add a Valid Redirect URI to this Client. If using K3d, this would be `https://localhost/callback` and then hit save at the bottom of the screen
+
+![](images/keycloak/keycloak3.png)
+
+### modify /etc/hosts on your local machine
+In K3d, in order for the OIDC flow to resolve correctly when running locally in Docker we will need to modify our `/etc/hosts` file to include a new entry. Note you may need `sudo` privileges on your local machine to do so.
+```
+127.0.0.1 localhost keycloak.keycloak
+```
+
+Next will need to update our route table with our callback path and ExtAuthPolicy route label if we havent done so already
+
+```bash
+kubectl --context ${CLUSTER1} apply -f - <<EOF
+apiVersion: networking.gloo.solo.io/v2
+kind: RouteTable
+metadata:
+  name: httpbin
+  namespace: httpbin
+  labels:
+    expose: "true"
+spec:
+  http:
+    - name: httpbin
+      labels:
+        oidc: keycloak
+      matchers:
+      - uri:
+          exact: /
+      - uri:
+          prefix: /get
+      - uri:
+          prefix: /anything
+      - uri:
+          prefix: /callback
+      forwardTo:
+        destinations:
+        - ref:
+            name: in-mesh
+            namespace: httpbin
+          port:
+            number: 8000
+EOF
+```
+
+Now when you access your httpbin app through the browser, it will be protected by the `keycloak` OIDC provider login page.
+```
+echo "${APP_CALLBACK_URL}/get"
+```
+
+![](images/keycloak/keycloak4.png)
+
+### User Credentials
+Below are a few users that you can validate with
+- Username: gloo-mesh // Password: solo.io
+
+![](images/keycloak/keycloak5.png)
+
+
+## Lab 18 - Integrate Okta with Keycloak <a name="lab-18---integrate-okta-with-keycloak-"></a>
+
+Now that we have Keycloak set up, we can also integrate it with the Okta OIDC Provider. 
+
+This [Doc](https://maybeitdepends.com/keycloak-integration-with-okta) was very helpful as a reference for these steps. 
+
+### Configure the Okta side
+First we will configure a new App Registration in Okta. The instructions in this [Doc](https://maybeitdepends.com/keycloak-integration-with-okta) will guide you to do a few things
+```
+- Create a new Okta Application Integration
+- Find your authorization server URL from Okta in the Security > API tab (i.e. `https://dev-12345678.okta.com/oauth2/default/.well-known/oauth-authorization-server`)
+```
+
+### Configure the Keycloak side
+Now that you have your Okta app configured and have identified the Okta authorization server URL, we can just simply import the configuration.
+
+In the Keycloak Administrator Console, select Identity Providers in the sidebar and add the OpenID Connect v1.0 Provider
+
+![](images/keycloak/keycloak6.png)
+
+Provide an alias for your Identity Provider such as `oidc-okta` for example. Take note of the `Redirect URI`. We will need to copy this into our Okta application Sign-in Redirect URIs in the last step
+
+![](images/keycloak/keycloak7.png)
+
+
+Then finally at the bottom of the Add Identity Providers page we can Import an External IDP Config by providing our Okta Authorization Server URL found in an earlier step. This should automatically import a few entries in the form
+
+![](images/keycloak/keycloak8.png)
+
+Then we need to provide the Okta Application's `Client Authentication`, `Client ID`, and `Client Secret` to finish up the OpenID Connect Config
+
+![](images/keycloak/keycloak9.png)
+
+Finally, back in Okta we will need to add the Identity Provider Redirect URI to our Okta Application
+
+![](images/keycloak/keycloak10.png)
+
+Now if you refresh the httpbin application in the browser or open it in Incognito mode we should see that Keycloak has now been integrated with Okta as an additional OIDC Provider
+
+![](images/keycloak/keycloak11.png)
+
+Selecting the `oidc-okta` provider should take you to an Okta Login. Note that when running locally, we may have issues with this integration resolving to `localhost` without some workarounds.
+
+
+
+
+
+
+
