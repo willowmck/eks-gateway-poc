@@ -2291,7 +2291,7 @@ spec:
 EOF
 ```
 
-### add callback redirect in keycloak UI
+Add callback redirect in keycloak UI:
 
 Keycloak has been exposed by a LoadBalancer at http://localhost:9000/auth
 
@@ -2307,7 +2307,8 @@ Add a Valid Redirect URI to this Client. If using K3d, this would be `https://lo
 
 ![](images/keycloak/keycloak3.png)
 
-### modify /etc/hosts on your local machine
+Modify /etc/hosts on your local machine:
+
 In K3d, in order for the OIDC flow to resolve correctly when running locally in Docker we will need to modify our `/etc/hosts` file to include a new entry. Note you may need `sudo` privileges on your local machine to do so.
 ```
 127.0.0.1 localhost keycloak.keycloak
@@ -2355,7 +2356,7 @@ echo "${APP_CALLBACK_URL}/get"
 
 ![](images/keycloak/keycloak4.png)
 
-### User Credentials
+User Credentials:
 Below are a few users that you can validate with
 - Username: gloo-mesh // Password: solo.io
 
@@ -2368,14 +2369,14 @@ Now that we have Keycloak set up, we can also integrate it with the Okta OIDC Pr
 
 This [Doc](https://maybeitdepends.com/keycloak-integration-with-okta) was very helpful as a reference for these steps. 
 
-### Configure the Okta side
+Configure the Okta side:
 First we will configure a new App Registration in Okta. The instructions in this [Doc](https://maybeitdepends.com/keycloak-integration-with-okta) will guide you to do a few things
 ```
 - Create a new Okta Application Integration
 - Find your authorization server URL from Okta in the Security > API tab (i.e. `https://dev-12345678.okta.com/oauth2/default/.well-known/oauth-authorization-server`)
 ```
 
-### Configure the Keycloak side
+Configure the Keycloak side:
 Now that you have your Okta app configured and have identified the Okta authorization server URL, we can just simply import the configuration.
 
 In the Keycloak Administrator Console, select Identity Providers in the sidebar and add the OpenID Connect v1.0 Provider
