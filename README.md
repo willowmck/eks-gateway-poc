@@ -545,7 +545,6 @@ kubectl --context ${CLUSTER1} -n httpbin get pods
 ```
 NAME                           READY   STATUS    RESTARTS   AGE
 in-mesh-5d9d9549b5-qrdgd       2/2     Running   0          11s
-not-in-mesh-5c64bb49cd-m9kwm   1/1     Running   0          11s
 ```
 
 ## Lab 7 - Create the httpbin workspace <a name="lab-7---create-the-httpbin-workspace-"></a>
