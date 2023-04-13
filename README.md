@@ -227,7 +227,7 @@ kind: Service
 metadata:
   labels:
     app: istio-ingressgateway
-    istio: ingressgateway
+    istio: solo-ingressgateway
   name: istio-ingressgateway
   namespace: istio-gateways
 spec:
@@ -242,7 +242,7 @@ spec:
     targetPort: 8443
   selector:
     app: istio-ingressgateway
-    istio: ingressgateway
+    istio: solo-ingressgateway
     revision: 1-16
   type: LoadBalancer
 
@@ -337,7 +337,7 @@ spec:
               namespace: istio-gateways
               enabled: true
               label:
-                istio: ingressgateway
+                istio: solo-ingressgateway
 ---
 apiVersion: admin.gloo.solo.io/v2
 kind: GatewayLifecycleManager
@@ -624,7 +624,7 @@ spec:
   workloads:
     - selector:
         labels:
-          istio: ingressgateway
+          istio: solo-ingressgateway
         cluster: cluster1
   listeners: 
     - http: {}
@@ -738,7 +738,7 @@ spec:
   workloads:
     - selector:
         labels:
-          istio: ingressgateway
+          istio: solo-ingressgateway
         cluster: cluster1
   listeners: 
     - http: {}
@@ -1666,7 +1666,7 @@ spec:
               namespace: istio-gateways
               enabled: true
               label:
-                istio: ingressgateway
+                istio: solo-ingressgateway
     - clusters:
       - name: cluster1
         activeGateway: false
@@ -1685,7 +1685,7 @@ spec:
               namespace: istio-gateways
               enabled: true
               label:
-                istio: ingressgateway
+                istio: solo-ingressgateway
 ---
 apiVersion: admin.gloo.solo.io/v2
 kind: GatewayLifecycleManager
@@ -1882,7 +1882,7 @@ spec:
               namespace: istio-gateways
               enabled: true
               label:
-                istio: ingressgateway
+                istio: solo-ingressgateway
 ---
 apiVersion: admin.gloo.solo.io/v2
 kind: GatewayLifecycleManager
@@ -1986,7 +1986,7 @@ spec:
   workloads:
     - selector:
         labels:
-          istio: ingressgateway
+          istio: solo-ingressgateway
         cluster: cluster1
   listeners: 
     - http: {}
@@ -2142,7 +2142,7 @@ spec:
   workloads:
     - selector:
         labels:
-          istio: ingressgateway
+          istio: solo-ingressgateway
         cluster: cluster1
   listeners: 
     - http: {}
