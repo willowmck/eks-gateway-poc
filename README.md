@@ -226,7 +226,7 @@ apiVersion: v1
 kind: Service
 metadata:
   labels:
-    app: istio-ingressgateway
+    app: solo-ingressgateway
     istio: solo-ingressgateway
   name: istio-ingressgateway
   namespace: istio-gateways
@@ -241,7 +241,7 @@ spec:
     protocol: TCP
     targetPort: 8443
   selector:
-    app: istio-ingressgateway
+    app: solo-ingressgateway
     istio: solo-ingressgateway
     revision: 1-16
   type: LoadBalancer
