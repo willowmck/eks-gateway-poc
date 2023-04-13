@@ -22,7 +22,8 @@
 * [Lab 14 - Leveraging the Latency EnvoyFilter for additional performance metrics from our gateway](#lab-14---leveraging-the-latency-envoyfilter-for-additional-performance-metrics-from-our-gateway-)
 * [Lab 15 - Upgrade Istio using Gloo Mesh Lifecycle Manager](#lab-15---upgrade-istio-using-gloo-mesh-lifecycle-manager-)
 * [Lab 16 - Configure a mutual TLS ingress gateway](#lab-16---configure-a-mutual-tls-ingress-gateway-)
-* [Lab 17 - Install and Configure Keycloak](#lab-17---install-and-configure-keycloak)
+* [Lab 17 - Install and Configure Keycloak](#lab-17---install-and-configure-keycloak-)
+* [Lab 18 - Integrate Okta with Keycloak](#lab-18---integrate-okta-with-keycloak-)
 
 
 
