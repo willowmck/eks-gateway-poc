@@ -338,40 +338,7 @@ spec:
               enabled: true
               label:
                 istio: solo-ingressgateway
----
-apiVersion: admin.gloo.solo.io/v2
-kind: GatewayLifecycleManager
-metadata:
-  name: cluster1-eastwest
-  namespace: gloo-mesh
-spec:
-  installations:
-    - clusters:
-      - name: cluster1
-        activeGateway: false
-      gatewayRevision: 1-16
-      istioOperatorSpec:
-        profile: empty
-        hub: us-docker.pkg.dev/gloo-mesh/istio-workshops
-        tag: 1.16.2-solo
-        values:
-          gateways:
-            istio-ingressgateway:
-              customService: true
-        components:
-          ingressGateways:
-            - name: istio-eastwestgateway
-              namespace: istio-gateways
-              enabled: true
-              label:
-                istio: eastwestgateway
-                topology.istio.io/network: cluster1
-              k8s:
-                env:
-                  - name: ISTIO_META_ROUTER_MODE
-                    value: "sni-dnat"
-                  - name: ISTIO_META_REQUESTED_NETWORK_VIEW
-                    value: cluster1
+
 
 EOF
 ```
@@ -1381,7 +1348,6 @@ Example output
 NAME                                                          CLUSTER      CDS        LDS        EDS        RDS          ECDS         ISTIOD                         VERSION
 ext-auth-service-7fccf5b78f-mb6wb.gloo-mesh-addons            cluster1     SYNCED     SYNCED     SYNCED     SYNCED       NOT SENT     istiod-1-17-94858bc8-9chtf     1.17.1-solo
 in-mesh-5978df87cc-mfmtx.httpbin                              cluster1     SYNCED     SYNCED     SYNCED     SYNCED       NOT SENT     istiod-1-17-94858bc8-9chtf     1.17.1-solo
-istio-eastwestgateway-1-17-8d85c9f97-s88gt.istio-gateways     cluster1     SYNCED     SYNCED     SYNCED     NOT SENT     NOT SENT     istiod-1-17-94858bc8-9chtf     1.17.1-solo
 istio-ingressgateway-1-17-79b44d8bb-vth6t.istio-gateways      cluster1     SYNCED     SYNCED     SYNCED     SYNCED       NOT SENT     istiod-1-17-94858bc8-9chtf     1.17.1-solo
 rate-limiter-66676f8d5b-wrcd7.gloo-mesh-addons                cluster1     SYNCED     SYNCED     SYNCED     SYNCED       NOT SENT     istiod-1-17-94858bc8-9chtf     1.17.1-solo
 redis-669c97869d-hjtfp.gloo-mesh-addons                       cluster1     SYNCED     SYNCED     SYNCED     SYNCED       NOT SENT     istiod-1-17-94858bc8-9chtf     1.17.1-solo
@@ -1686,66 +1652,6 @@ spec:
               enabled: true
               label:
                 istio: solo-ingressgateway
----
-apiVersion: admin.gloo.solo.io/v2
-kind: GatewayLifecycleManager
-metadata:
-  name: cluster1-eastwest
-  namespace: gloo-mesh
-spec:
-  installations:
-    - clusters:
-      - name: cluster1
-        activeGateway: false
-      gatewayRevision: ${OLD_REVISION}
-      istioOperatorSpec:
-        profile: empty
-        hub: us-docker.pkg.dev/gloo-mesh/istio-workshops
-        tag: 1.16.2-solo
-        values:
-          gateways:
-            istio-ingressgateway:
-              customService: true
-        components:
-          ingressGateways:
-            - name: istio-eastwestgateway
-              namespace: istio-gateways
-              enabled: true
-              label:
-                istio: eastwestgateway
-                topology.istio.io/network: cluster1
-              k8s:
-                env:
-                  - name: ISTIO_META_ROUTER_MODE
-                    value: "sni-dnat"
-                  - name: ISTIO_META_REQUESTED_NETWORK_VIEW
-                    value: cluster1
-    - clusters:
-      - name: cluster1
-        activeGateway: false
-      gatewayRevision: ${NEW_REVISION}
-      istioOperatorSpec:
-        profile: empty
-        hub: us-docker.pkg.dev/gloo-mesh/istio-workshops
-        tag: 1.17.1-solo
-        values:
-          gateways:
-            istio-ingressgateway:
-              customService: true
-        components:
-          ingressGateways:
-            - name: istio-eastwestgateway
-              namespace: istio-gateways
-              enabled: true
-              label:
-                istio: eastwestgateway
-                topology.istio.io/network: cluster1
-              k8s:
-                env:
-                  - name: ISTIO_META_ROUTER_MODE
-                    value: "sni-dnat"
-                  - name: ISTIO_META_REQUESTED_NETWORK_VIEW
-                    value: cluster1
 EOF
 ```
 
@@ -1883,40 +1789,6 @@ spec:
               enabled: true
               label:
                 istio: solo-ingressgateway
----
-apiVersion: admin.gloo.solo.io/v2
-kind: GatewayLifecycleManager
-metadata:
-  name: cluster1-eastwest
-  namespace: gloo-mesh
-spec:
-  installations:
-    - clusters:
-      - name: cluster1
-        activeGateway: false
-      gatewayRevision: ${NEW_REVISION}
-      istioOperatorSpec:
-        profile: empty
-        hub: us-docker.pkg.dev/gloo-mesh/istio-workshops
-        tag: 1.17.1-solo
-        values:
-          gateways:
-            istio-ingressgateway:
-              customService: true
-        components:
-          ingressGateways:
-            - name: istio-eastwestgateway
-              namespace: istio-gateways
-              enabled: true
-              label:
-                istio: eastwestgateway
-                topology.istio.io/network: cluster1
-              k8s:
-                env:
-                  - name: ISTIO_META_ROUTER_MODE
-                    value: "sni-dnat"
-                  - name: ISTIO_META_REQUESTED_NETWORK_VIEW
-                    value: cluster1
 EOF
 ```
 
@@ -1932,7 +1804,6 @@ You should get the following output:
 NAME                           READY   STATUS    RESTARTS   AGE
 istiod-1-17-577c47cf5c-m6mf4   1/1     Running   0          3m16s
 NAME                                          READY   STATUS    RESTARTS   AGE
-istio-eastwestgateway-1-17-7c7f4dbc9-j8qk5   1/1     Running   0          100s
 istio-ingressgateway-1-17-d64766d6b-bmpft    1/1     Running   0          100s
 ```
 
