@@ -381,14 +381,17 @@ Then, you can deploy the addons on the cluster(s) using Helm:
 
 ```bash
 helm upgrade --install gloo-mesh-agent-addons gloo-mesh-agent/gloo-mesh-agent \
-  --namespace gloo-mesh-addons \
-  --kube-context=${CLUSTER1} \
-  --set cluster=cluster1 \
-  --set glooMeshAgent.enabled=false \
-  --set glooMeshPortalServer.enabled=true \
-  --set rate-limiter.enabled=true \
-  --set ext-auth-service.enabled=true \
-  --version 2.2.6
+--namespace gloo-mesh-addons \
+--kube-context=${CLUSTER1} \
+--version 2.2.6 \
+--values - <<EOF
+glooMeshAgent:
+  enabled: false
+rate-limiter:
+  enabled: true
+ext-auth-service:
+  enabled: true
+EOF
 ```
 
 This is how to environment looks like now:
@@ -2495,14 +2498,17 @@ kubectl --context ${CLUSTER1} create namespace gloo-mesh-addons
 kubectl --context ${CLUSTER1} label namespace gloo-mesh-addons istio.io/rev=1-16 --overwrite
 
 helm upgrade --install gloo-mesh-agent-addons gloo-mesh-agent/gloo-mesh-agent \
-  --namespace gloo-mesh-addons \
-  --kube-context=${CLUSTER1} \
-  --set cluster=cluster1 \
-  --set glooMeshAgent.enabled=false \
-  --set glooMeshPortalServer.enabled=true \
-  --set rate-limiter.enabled=true \
-  --set ext-auth-service.enabled=false \
-  --version 2.2.6
+--namespace gloo-mesh-addons \
+--kube-context=${CLUSTER1} \
+--version 2.2.6 \
+--values - <<EOF
+glooMeshAgent:
+  enabled: false
+rate-limiter:
+  enabled: true
+ext-auth-service:
+  enabled: false
+EOF
 ```
 
 Check to see that the `ext-auth-service` does not exist
