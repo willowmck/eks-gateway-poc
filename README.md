@@ -26,6 +26,7 @@
 * [Lab 18 - Integrate Okta with Keycloak](#lab-18---integrate-okta-with-keycloak-)
 * [Lab 19 - Enable JWT Validation at the Gateway](#lab-19---enable-jwt-validation-at-the-gateway-)
 * [Lab 20 - Using Passthrough External Auth](#lab-20---using-passthrough-external-auth-)
+* [Lab 21 - Routing to a GRPC Service](#lab-21---routing-to-a-grpc-service-)
 
 
 
@@ -2692,3 +2693,203 @@ Output should look similar to below
 As a next step to this exercise, we can swap the example `grpc-extauth` Sidecar container with an OPA sidecar to handle our authorization with the same Passthrough External Auth workflow. The architecture will look similar to below
 
 ![](images/extauth/passthrough3.png)
+
+
+## Lab 21 - Routing to a GRPC Service <a name="lab-21---routing-to-a-grpc-service-"></a>
+
+In this lab we are going to explore routing to a GRPC service through the gateway. In this example we will use a GRPC service `currency` that converts one money amount to another currency
+
+Since we can treat this as a new app/team we can create a new `Workspace` and `WorkspaceSettings` for our currency service
+
+First we need to create the `currency` namespace and label it for istio injection
+```
+kubectl --context ${CLUSTER1} create namespace currency
+kubectl --context ${CLUSTER1} label namespace currency istio.io/rev=1-16 --overwrite
+```
+
+Next we can configure the Workspace
+
+```bash
+kubectl --context ${CLUSTER1} apply -f - <<EOF
+apiVersion: admin.gloo.solo.io/v2
+kind: Workspace
+metadata:
+  name: currency
+  namespace: gloo-mesh
+  labels:
+    allow_ingress: "true"
+spec:
+  workloadClusters:
+  - name: cluster1
+    namespaces:
+    - name: currency
+EOF
+```
+
+Then we can deploy the WorkspaceSettings
+
+```bash
+kubectl --context ${CLUSTER1} apply -f - <<EOF
+apiVersion: admin.gloo.solo.io/v2
+kind: WorkspaceSettings
+metadata:
+  name: currency
+  namespace: currency
+spec:
+  importFrom:
+  - workspaces:
+    - name: gateways
+    resources:
+    - kind: SERVICE
+  exportTo:
+  - workspaces:
+    - name: gateways
+    resources:
+    - kind: SERVICE
+      labels:
+        app: currencyservice
+    - kind: ALL
+      labels:
+        expose: "true"
+EOF
+```
+
+Next we can deploy the `currency` GRPC service into the `currency` namespace
+
+```bash
+kubectl --context ${CLUSTER1} apply -f - <<EOF
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: currency
+  namespace: currency
+---
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: currencyservice
+      namespace: currency
+      labels:
+        app: currencyservice
+    spec:
+      selector:
+        app: currencyservice
+      ports:
+      - name: grpc
+        port: 7000
+        targetPort: 7000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: currencyservice
+  namespace: currency
+spec:
+  selector:
+    matchLabels:
+      app: currencyservice
+  template:
+    metadata:
+      labels:
+        app: currencyservice
+      annotations:
+        proxy.istio.io/config: '{ "holdApplicationUntilProxyStarts": true }'
+    spec:
+      serviceAccountName: currency
+      terminationGracePeriodSeconds: 5
+      containers:
+      - name: server
+        image: gcr.io/solo-test-236622/currencyservice:solo-build
+        ports:
+        - name: grpc
+          containerPort: 7000
+        env:
+        - name: PORT
+          value: "7000"
+        - name: DISABLE_TRACING
+          value: "1"
+        - name: DISABLE_PROFILER
+          value: "1"
+        - name: DISABLE_DEBUGGER
+          value: "1"
+        readinessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-addr=:7000"]
+        livenessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-addr=:7000"]
+EOF
+```
+
+If you have not already done so from Lab 6, apply the parent `RouteTable` to configure the main routing 
+
+```bash
+kubectl --context ${CLUSTER1} apply -f - <<EOF
+apiVersion: networking.gloo.solo.io/v2
+kind: RouteTable
+metadata:
+  name: main
+  namespace: istio-gateways
+spec:
+  hosts:
+    - '*'
+  virtualGateways:
+    - name: north-south-gw
+      namespace: istio-gateways
+      cluster: cluster1
+  workloadSelectors: []
+  http:
+    - name: root
+      matchers:
+      - uri:
+          prefix: /
+      delegate:
+        routeTables:
+          - labels:
+              expose: "true"
+EOF
+```
+
+Now we can deploy a RouteTable for our currency service
+
+```bash
+kubectl --context ${CLUSTER1} apply -f - <<EOF
+apiVersion: networking.gloo.solo.io/v2
+kind: RouteTable
+metadata:
+  name: currency
+  namespace: currency
+  labels:
+    expose: "true"
+spec:
+  http:
+    - matchers:
+      - uri:
+          prefix: /hipstershop.CurrencyService/Convert
+      forwardTo:
+        destinations:
+          - ref:
+              name: currencyservice
+              namespace: currency
+              cluster: cluster1
+            port:
+              number: 7000
+EOF
+```
+
+Test that the route is serving traffic. In order to properly test, you will need `grpcurl` installed and it can be downloaded here: [grpcurl installation](https://github.com/fullstorydev/grpcurl#installation)
+
+```
+grpcurl --insecure --proto example-config/grpc/online-boutique.proto -d '{ "from": { "currency_code": "USD", "nanos": 44637071, "units": "31" }, "to_code": "JPY" }' ${ENDPOINT_HTTPS_GW_CLUSTER1} hipstershop.CurrencyService/Convert
+```
+
+Output should look similar to below:
+```
+% grpcurl --insecure --proto example-config/grpc/online-boutique.proto -d '{ "from": { "currency_code": "USD", "nanos": 44637071, "units": "31" }, "to_code": "JPY" }' ${ENDPOINT_HTTPS_GW_CLUSTER1} hipstershop.CurrencyService/Convert
+{
+  "currencyCode": "JPY",
+  "units": "3471",
+  "nanos": 67780486
+}
+```
+
