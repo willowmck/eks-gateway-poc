@@ -27,6 +27,7 @@
 * [Lab 19 - Enable JWT Validation at the Gateway](#lab-19---enable-jwt-validation-at-the-gateway-)
 * [Lab 20 - Using Passthrough External Auth](#lab-20---using-passthrough-external-auth-)
 * [Lab 21 - Routing to a GRPC Service](#lab-21---routing-to-a-grpc-service-)
+* [Lab 22 - Securing GRPC Service with ExtAuthPolicy](#lab-22---securing-grpc-service-with-extauthpolicy-)
 
 
 
@@ -1175,10 +1176,9 @@ metadata:
 spec:
   raw:
     rateLimits:
-    - actions:
-      - genericKey:
-          descriptorValue: "per-minute"
-      - remoteAddress: {}
+      - actions:
+          - genericKey:
+              descriptorValue: counter
 EOF
 ```
 
@@ -1204,12 +1204,10 @@ spec:
   raw:
     descriptors:
       - key: generic_key
-        value: "per-minute"
-        descriptors:
-          - key: remote_address
-            rateLimit:
-              requestsPerUnit: 5
-              unit: MINUTE
+        rateLimit:
+          requestsPerUnit: 5
+          unit: MINUTE
+        value: counter
 EOF
 ```
 
@@ -2863,7 +2861,10 @@ metadata:
     expose: "true"
 spec:
   http:
-    - matchers:
+    - name: currency
+      labels:
+        route_name: currency
+      matchers:
       - uri:
           prefix: /hipstershop.CurrencyService/Convert
       forwardTo:
@@ -2879,12 +2880,12 @@ EOF
 
 Test that the route is serving traffic. In order to properly test, you will need `grpcurl` installed and it can be downloaded here: [grpcurl installation](https://github.com/fullstorydev/grpcurl#installation)
 
-```
+```bash
 grpcurl --insecure --proto example-config/grpc/online-boutique.proto -d '{ "from": { "currency_code": "USD", "nanos": 44637071, "units": "31" }, "to_code": "JPY" }' ${ENDPOINT_HTTPS_GW_CLUSTER1} hipstershop.CurrencyService/Convert
 ```
 
 Output should look similar to below:
-```
+```bash
 % grpcurl --insecure --proto example-config/grpc/online-boutique.proto -d '{ "from": { "currency_code": "USD", "nanos": 44637071, "units": "31" }, "to_code": "JPY" }' ${ENDPOINT_HTTPS_GW_CLUSTER1} hipstershop.CurrencyService/Convert
 {
   "currencyCode": "JPY",
@@ -2893,3 +2894,119 @@ Output should look similar to below:
 }
 ```
 
+## Lab 22 - Securing GRPC Service with ExtAuthPolicy <a name="lab-22---securing-grpc-service-with-extauthpolicy-"></a>
+
+Prerequisites to complete this lab:
+- Labs 1-9 Completed
+- Lab 21
+
+Now that we have exposed our GRPC application using a RouteTable, let's continue by securing this service with an `ExtAuthPolicy`. This is pretty simple as we have already completed a lot of the steps in Lab 9 and can re-use some of these components
+
+```
+kubectl --context ${CLUSTER1} apply -f - <<EOF
+apiVersion: security.policy.gloo.solo.io/v2
+kind: ExtAuthPolicy
+metadata:
+  name: currency-extauth
+  namespace: currency
+spec:
+  applyToRoutes:
+  - route:
+      labels:
+        route_name: "currency"
+  config:
+    server:
+      name: cluster1-ext-auth-server
+      namespace: httpbin
+      cluster: cluster1
+    glooAuth:
+      configs:
+      - oauth2:
+          oidcAuthorizationCode:
+            appUrl: ${APP_CALLBACK_URL}
+            callbackPath: /callback
+            clientId: ${OIDC_CLIENT_ID}
+            clientSecretRef:
+              name: oidc-client-secret
+              namespace: gloo-mesh
+            issuerUrl: ${ISSUER_URL}
+            session:
+              failOnFetchFailure: true
+              redis:
+                cookieName: oidc-session
+                options:
+                  host: redis.gloo-mesh-addons:6379
+                allowRefreshing: true
+              cookieOptions:
+                maxAge: "90"
+            scopes:
+            - email
+            - profile
+            headers:
+              idTokenHeader: Jwt
+EOF
+```
+
+Now let's try to curl our GRPC service again. Since we are not passing in a valid token, this request should fail
+
+```bash
+grpcurl --insecure --proto example-config/grpc/online-boutique.proto -d '{ "from": { "currency_code": "USD", "nanos": 44637071, "units": "31" }, "to_code": "JPY" }' ${ENDPOINT_HTTPS_GW_CLUSTER1} hipstershop.CurrencyService/Convert
+```
+
+Output should look similar to below:
+
+```bash
+% grpcurl --insecure --proto example-config/grpc/online-boutique.proto -d '{ "from": { "currency_code": "USD", "nanos": 44637071, "units": "31" }, "to_code": "JPY" }' ${ENDPOINT_HTTPS_GW_CLUSTER1} hipstershop.CurrencyService/Convert
+ERROR:
+  Code: Unknown
+  Message:
+```
+
+If we provide a valid access token in the curl request, it should succeed
+
+Set your access token variable. A simple way to get this would be to grab it from our `httpbin` app that we enabled with ext auth earlier. Navigate and login to your httpbin app through the browser
+
+```bash
+echo "${APP_CALLBACK_URL}/get"
+```
+
+You can use the JWT provided in the `jwt` header as this is from the same OIDC application
+
+```bash
+{
+  "args": {}, 
+  "headers": {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7", 
+    "Accept-Encoding": "gzip, deflate, br", 
+    "Accept-Language": "en-US,en;q=0.9", 
+    "Cache-Control": "max-age=0", 
+    "Cookie": "oidc-session=TIPANHW4ITKNEJOFXJVHINHMRWER3ZMYZZYOULXZGOHKTYEZK5HGOCTHCNGQDAGRVY5EBLBYALBTFBHGNTBZIVB546NKZ6MH5TIFKOA=", 
+    "Host": "localhost", 
+    "Jwt": "eyJraWQiOiJ4dm1UNTJKLXlyUHM1eG9rR1J2NDAxZzQ4dkxkZkFBRUtZX2NMLWdLTGo0IiwiYWxnIjoiUlMyNTYifQ.eyJzdWIiOiIwMHUxbThjeDNlM2RTUlRSdzVkNyIsIm5hbWUiOiJhbGV4IiwiZW1haWwiOiJhbGV4Lmx5QHNvbG8uaW8iLCJ2ZXIiOjEsImlzcyI6Imh0dHBzOi8vZGV2LTIyNjUzMTU4Lm9rdGEuY29tL29hdXRoMi9kZWZhdWx0IiwiYXVkIjoiMG9hNnF2enliY1ZDSzZQY1M1ZDciLCJpYXQiOjE2ODMzMjMzNDcsImV4cCI6MTY4MzMyNjk0NywianRpIjoiSUQuTnhfcmQ3bTB1b29qOVluRWVQWW94cDdpX1FNRDJpbGE1dUktRVR2bTBvOCIsImFtciI6WyJwd2QiXSwiaWRwIjoiMDBvMW04Y3d4cUtrbXM1b2M1ZDciLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJhbGV4Lmx5QHNvbG8uaW8iLCJhdXRoX3RpbWUiOjE2ODMzMjExODUsImF0X2hhc2giOiJYLThDTHVVRE1iV2I4NFBDd1pKVDh3IiwiZ3JvdXBzIjpbIkV2ZXJ5b25lIiwib3JnMS1hZG1pbnMiLCJ0aHJvd2F3YXktYWRtaW4iXX0.G-AjlzDiWiFmSdZr947Fm1g_e2DZVKxYbu80O26XksAbAORtF_-qZgTVbHT_m-YsK4I9fyTR5NgdFiTtvVf5ROTlPEYTgOzkguxG8et4K6F4Lu8lqCKWrT8k3RYm9-eatctgekXICCGLsPNAwLMZHAMnfaoaGZ6i9iNTiTe0cFVBUNOzDU5cTUrquv7FMBytJZ70wsX1LbyXYNkOV8FFgmEsVHuSQyg3irZl3XO5vQr6Ra-TzO3s44ueT_xMveU10cOMnkzu3t2GRZ96EcOEd-kuFTL_frUfZLKL5wM-d8FKjAboqZsx5ny0uziEKg75EGoaGdBKGT0g4KlMTaOM0Q"
+<...>
+}
+```
+
+Set your access token below:
+```bash
+ACCESS_TOKEN="<insert jwt token here>"
+```
+
+Now retry the curl command with your access token provided
+
+```bash
+grpcurl -H "Authorization: Bearer ${ACCESS_TOKEN}" --insecure --proto example-config/grpc/online-boutique.proto -d '{ "from": { "currency_code": "USD", "nanos": 44637071, "units": "31" }, "to_code": "JPY" }' ${ENDPOINT_HTTPS_GW_CLUSTER1} hipstershop.CurrencyService/Convert
+```
+
+Output should look similar to below:
+
+```bash
+% grpcurl -H "Authorization: Bearer ${ACCESS_TOKEN}" --insecure --proto example-config/grpc/online-boutique.proto -d '{ "from": { "currency_code": "USD", "nanos": 44637071, "units": "31" }, "to_code": "JPY" }' ${ENDPOINT_HTTPS_GW_CLUSTER1} hipstershop.CurrencyService/Convert
+{
+  "currencyCode": "JPY",
+  "units": "3471",
+  "nanos": 67780486
+}
+```
+
+Congrats! You have now just secured your GRPC service using ExtAuthPolicy!
