@@ -28,6 +28,7 @@
 * [Lab 20 - Using Passthrough External Auth](#lab-20---using-passthrough-external-auth-)
 * [Lab 21 - Routing to a GRPC Service](#lab-21---routing-to-a-grpc-service-)
 * [Lab 22 - Securing GRPC Service with ExtAuthPolicy](#lab-22---securing-grpc-service-with-extauthpolicy-)
+* [Lab 23 - Apply rate limiting to the GRPC service](#lab-23---apply-rate-limiting-to-the-grpc-service-)
 
 
 
