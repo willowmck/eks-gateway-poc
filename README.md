@@ -3014,6 +3014,11 @@ Congrats! You have now just secured your GRPC service using ExtAuthPolicy!
 
 ## Lab 23 - Apply rate limiting to the GRPC service <a name="lab-23---apply-rate-limiting-to-the-grpc-service-"></a>
 
+Prerequisites to complete this lab:
+- Labs 1-9 Completed
+- Lab 11
+- Lab 21
+
 Similar to Lab 11, we can set up rate-limiting for our GRPC service. This time, we can set our rate limit for this GRPC service to 10 requests per minute
 
 ```bash
@@ -3133,6 +3138,8 @@ Now retry the curl command with your access token provided, it should error afte
 ```
 grpcurl -H "Authorization: Bearer ${ACCESS_TOKEN}" --insecure --proto example-config/grpc/online-boutique.proto -d '{ "from": { "currency_code": "USD", "nanos": 44637071, "units": "31" }, "to_code": "JPY" }' ${ENDPOINT_HTTPS_GW_CLUSTER1} hipstershop.CurrencyService/Convert
 ```
+
+Note: if you did not complete Lab 22, you can remove the token from your curl request. Rate limiting is not dependent on the ext auth policy to function
 
 Output should look similar to below:
 
