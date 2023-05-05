@@ -2793,6 +2793,7 @@ spec:
         app: currencyservice
       annotations:
         proxy.istio.io/config: '{ "holdApplicationUntilProxyStarts": true }'
+        sidecar.istio.io/inject: "true"
     spec:
       serviceAccountName: currency
       terminationGracePeriodSeconds: 5
