@@ -3010,3 +3010,136 @@ Output should look similar to below:
 ```
 
 Congrats! You have now just secured your GRPC service using ExtAuthPolicy!
+
+## Lab 23 - Apply rate limiting to the GRPC service <a name="lab-23---apply-rate-limiting-to-the-grpc-service-"></a>
+
+Similar to Lab 11, we can set up rate-limiting for our GRPC service. This time, we can set our rate limit for this GRPC service to 10 requests per minute
+
+```bash
+kubectl --context ${CLUSTER1} apply -f - <<EOF
+apiVersion: trafficcontrol.policy.gloo.solo.io/v2
+kind: RateLimitClientConfig
+metadata:
+  labels:
+    workspace.solo.io/exported: "true"
+  name: currency
+  namespace: currency
+spec:
+  raw:
+    rateLimits:
+      - actions:
+          - genericKey:
+              descriptorValue: counter
+---
+apiVersion: admin.gloo.solo.io/v2
+kind: RateLimitServerConfig
+metadata:
+  labels:
+    workspace.solo.io/exported: "true"
+  name: currency
+  namespace: gloo-mesh-addons
+spec:
+  destinationServers:
+  - port:
+      name: grpc
+    ref:
+      cluster: cluster1
+      name: rate-limiter
+      namespace: gloo-mesh-addons
+  raw:
+    descriptors:
+      - key: generic_key
+        rateLimit:
+          requestsPerUnit: 10
+          unit: MINUTE
+        value: counter
+---
+apiVersion: trafficcontrol.policy.gloo.solo.io/v2
+kind: RateLimitPolicy
+metadata:
+  labels:
+    workspace.solo.io/exported: "true"
+  name: currency
+  namespace: currency
+spec:
+  applyToRoutes:
+  - route:
+      labels:
+        ratelimited: "true"
+  config:
+    ratelimitClientConfig:
+      cluster: cluster1
+      name: currency
+      namespace: currency
+    ratelimitServerConfig:
+      cluster: cluster1
+      name: currency
+      namespace: gloo-mesh-addons
+    serverSettings:
+      cluster: cluster1
+      name: rate-limit-server
+      namespace: currency
+---
+apiVersion: admin.gloo.solo.io/v2
+kind: RateLimitServerSettings
+metadata:
+  labels:
+    workspace.solo.io/exported: "true"
+  name: rate-limit-server
+  namespace: currency
+spec:
+  destinationServer:
+    port:
+      name: grpc
+    ref:
+      cluster: cluster1
+      name: rate-limiter
+      namespace: gloo-mesh-addons
+EOF
+```
+
+Then we can update our `RouteTable` with the `ratelimited: true` label
+```bash
+kubectl --context ${CLUSTER1} apply -f - <<EOF
+apiVersion: networking.gloo.solo.io/v2
+kind: RouteTable
+metadata:
+  name: currency
+  namespace: currency
+  labels:
+    expose: "true"
+spec:
+  http:
+    - name: currency
+      labels:
+        route_name: currency
+        ratelimited: "true"
+      matchers:
+      - uri:
+          prefix: /hipstershop.CurrencyService/Convert
+      forwardTo:
+        destinations:
+          - ref:
+              name: currencyservice
+              namespace: currency
+              cluster: cluster1
+            port:
+              number: 7000
+EOF
+```
+
+Now retry the curl command with your access token provided, it should error after 10 req/min
+```
+grpcurl -H "Authorization: Bearer ${ACCESS_TOKEN}" --insecure --proto example-config/grpc/online-boutique.proto -d '{ "from": { "currency_code": "USD", "nanos": 44637071, "units": "31" }, "to_code": "JPY" }' ${ENDPOINT_HTTPS_GW_CLUSTER1} hipstershop.CurrencyService/Convert
+```
+
+Output should look similar to below:
+
+```bash
+% grpcurl -H "Authorization: Bearer ${ACCESS_TOKEN}" --insecure --proto example-config/grpc/online-boutique.proto -d '{ "from": { "currency_code": "USD", "nanos": 44637071, "units": "31" }, "to_code": "JPY" }' ${ENDPOINT_HTTPS_GW_CLUSTER1} hipstershop.CurrencyService/Convert
+ERROR:
+  Code: Unavailable
+  Message:
+```
+
+Congrats! You have now applied rate limiting to your GRPC service!
