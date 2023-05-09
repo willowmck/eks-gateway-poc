@@ -2474,8 +2474,6 @@ This example will be used to demonstrate how we can leverage [Passthrough Extern
 Benefits of passthrough external auth: 
 With passthrough external auth, you can integrate with existing auth implementations, while still being able to use other Gloo Gateway external auth implementations, such as OIDC and API key auth.
 
-### Authorization Server as a Sidecar
-
 The [Passthrough External Auth](https://docs.solo.io/gloo-gateway/latest/policies/external-auth/passthrough/) example provides a sample `extauth-grpcservice` that is configured as a `Deployment`. A high level architecture diagram of the flow looks like this
 
 ![](images/extauth/passthrough1b.png)
