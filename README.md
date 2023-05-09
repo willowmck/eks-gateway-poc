@@ -2469,7 +2469,7 @@ x-envoy-upstream-service-time: 6
 
 ## Lab 20 - Using Passthrough External Auth <a name="lab-20---using-passthrough-external-auth-"></a>
 
-This example will be used to demonstrate how we can leverage [Passthrough External Auth](https://docs.solo.io/gloo-gateway/latest/policies/external-auth/passthrough/) to authenticate requests with an external auth server
+This example will be used to demonstrate how we can leverage [Passthrough External Auth](https://docs.solo.io/gloo-gateway/latest/policies/external-auth/passthrough/) to authenticate requests with an external auth server, in this case an OPA deployment.
 
 Benefits of passthrough external auth: 
 With passthrough external auth, you can integrate with existing auth implementations, while still being able to use other Gloo Gateway external auth implementations, such as OIDC and API key auth.
@@ -2480,9 +2480,11 @@ The [Passthrough External Auth](https://docs.solo.io/gloo-gateway/latest/policie
 
 ![](images/extauth/passthrough1b.png)
 
-In our lab example, we will continue to use the same sample service - however this time we will deploy it as a `Sidecar` on our `ext-auth-service` deployment. A high level architecture diagram of the flow looks like this
+In our lab example, we will continue to use this similar architecture used in the docs, but in this lab we will additionally demonstrate how to manipulate requests and responses to meet our traffic shaping requirements using `TransformationPolicy`
 
-![](images/extauth/passthrough2.png)
+A high level architecture diagram of the flow looks like this
+
+![](images/extauth/passthrough2b.png)
 
 First, let's clean up any policies that may already exist from previous labs
 ```bash
@@ -2491,7 +2493,7 @@ kubectl --context ${CLUSTER1} -n httpbin delete ExtAuthPolicy httpbin-opa
 kubectl --context ${CLUSTER1} -n httpbin delete ExtAuthPolicy httpbin-keycloak-extauth
 ```
 
-If we have already deployed the `ext-auth-server` as a part of Gloo Mesh Addons deployment, lets remove it, so that we can re-deploy the `ext-auth-server` with our Sidecar. To do this we can just update our helm values with `ext-auth-service.enabled=false` and run a `helm upgrade` command. If you  have not yet deployed the Gloo Mesh Addons, you can still continue to use the same commands below.
+If we have already deployed the `ext-auth-server` as a part of Gloo Mesh Addons deployment, please update the image below using the following commands. If you  have not yet deployed the Gloo Mesh Addons, you can still continue to use the same commands below.
 
 ```bash
 kubectl --context ${CLUSTER1} create namespace gloo-mesh-addons
@@ -2507,11 +2509,17 @@ glooMeshAgent:
 rate-limiter:
   enabled: true
 ext-auth-service:
-  enabled: false
+  enabled: true
+  extAuth:
+    image:
+      pullPolicy: IfNotPresent
+      registry: registry.hub.docker.com
+      repository: ably77/ext-auth-service
+      tag: amd64-ext-auth-service-0.35.0-poc
 EOF
 ```
 
-Check to see that the `ext-auth-service` does not exist
+Check to see that the `ext-auth-service` is deployed
 
 ```bash
 kubectl --context ${CLUSTER1} get pods -n gloo-mesh-addons
@@ -2521,37 +2529,285 @@ output should look like this
 
 ```bash
 % kubectl --context ${CLUSTER1} get pods -n gloo-mesh-addons
-NAME                                READY   STATUS             RESTARTS     AGE
-redis-578865fd78-l2kg2              2/2     Running            0            90s
-rate-limiter-64b64b779c-zrjrt       2/2     Running            0            90s
+NAME                               READY   STATUS    RESTARTS   AGE
+rate-limiter-64b64b779c-xrtsn      2/2     Running   0          19m
+redis-578865fd78-rgjqm             2/2     Running   0          19m
+ext-auth-service-76d8457d9-d69k9   2/2     Running   0          92s
 ```
 
-Now we can re-deploy our `ext-auth-service` with our example auth service attached as a sidecar
+### Deploying OPA
+
+Next we will deploy OPA as our authorization server
 
 ```bash
-kubectl --context ${CLUSTER1} apply -f example-config/extauth-w-sidecar-2.2.6.yaml
+kubectl apply --context ${CLUSTER1} -f - <<EOF
+apiVersion: v1
+data:
+  policy.rego: cGFja2FnZSByYmFjCgppbXBvcnQgZnV0dXJlLmtleXdvcmRzLmlmCgpkZWZhdWx0IGFsbG93IDo9IGZhbHNlCgojIERlY29kZSBKV1QgZnJvbSBpbnB1dC5qd3QKY2xhaW1zIDo9IHBheWxvYWQgaWYgewoJdiA6PSBpbnB1dC5qd3QKCVtfLCBwYXlsb2FkLCBfXSA6PSBpby5qd3QuZGVjb2RlKHYpCn0KCiMgYWxsb3cgaWYgZGVjb2RlZCBKV1QgY29udGFpbnMgdGhlIHJpZ2h0IGdyb3VwIGNsYWltCmFsbG93IGlmIGNsYWltcy5ncm91cHMgPT0gWyJhZG1pbi1ncm91cCJdCgoK
+kind: Secret
+metadata:
+  name: opa-policy
+  namespace: gloo-mesh-addons
+type: Opaque
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opa
+  namespace: gloo-mesh-addons
+  labels:
+      app: opa
+spec:
+  ports:
+  - port: 8181
+    protocol: TCP
+  selector:
+      app: opa
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: opa
+  namespace: gloo-mesh-addons
+  labels:
+    app: opa
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: opa
+  template:
+    metadata:
+      labels:
+        app: opa
+    spec:
+      containers:
+        - name: opa
+          image: openpolicyagent/opa:latest-envoy
+          securityContext:
+            runAsUser: 1111
+          volumeMounts:
+          - readOnly: true
+            mountPath: /policy
+            name: opa-policy
+          args:
+          - "run"
+          - "--server"
+          - "--set=default_decision=v1/data/rbac/allow"
+          - "--addr=0.0.0.0:8181"
+          - "--diagnostic-addr=0.0.0.0:8282"
+          - "--log-level=debug"
+          - "--set=decision_logs.console=true"
+          - "--set=log-format=json-pretty"
+          - "--ignore=.*"
+          - "/policy/policy.rego"
+          ports:
+          - containerPort: 8181
+          livenessProbe:
+            httpGet:
+              path: /health?plugins
+              scheme: HTTP
+              port: 8282
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health?plugins
+              scheme: HTTP
+              port: 8282
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: proxy-config
+          configMap:
+            name: proxy-config
+        - name: opa-policy
+          secret:
+            secretName: opa-policy
+EOF
 ```
 
-Check to see that the `ext-auth-service` is now deployed
+The `opa-policy` secret contains a simple rego policy
+
+```bash
+package rbac
+
+import future.keywords.if
+
+default allow := false
+
+# Decode JWT from input.jwt
+claims := payload if {
+	v := input.jwt
+	[_, payload, _] := io.jwt.decode(v)
+}
+
+# allow if decoded JWT contains the right group claim
+allow if claims.groups == ["admin-group"]
+```
+
+Check to see if the OPA server has been deployed
 
 ```bash
 kubectl --context ${CLUSTER1} get pods -n gloo-mesh-addons
 ```
 
-output should look like this
+The output should look similar to below:
 
 ```bash
-% kubectl --context ${CLUSTER1} get pods -n gloo-mesh-addons 
-NAME                                READY   STATUS    RESTARTS   AGE
-redis-578865fd78-g2nks              2/2     Running   0          2m28s
-rate-limiter-64b64b779c-mchrk       2/2     Running   0          2m28s
-ext-auth-service-5b75869754-zjrtk   3/3     Running   0          29s
+% kubectl --context ${CLUSTER1} get pods -n gloo-mesh-addons   
+NAME                               READY   STATUS    RESTARTS   AGE
+rate-limiter-64b64b779c-xrtsn      2/2     Running   0          29m
+redis-578865fd78-rgjqm             2/2     Running   0          29m
+ext-auth-service-76d8457d9-d69k9   2/2     Running   0          11m
+opa-7f845fd897-t95l2               2/2     Running   0          20s
 ```
 
-Notice that our `ext-auth-service` now has 3/3 containers in the pod with the addition of our `extauth-grpcservice` Sidecar
+In order for us to leverage the `TransformationPolicy` built into Gloo Platform, we will need to apply an internal `RouteTable` for our OPA server
 
+```bash
+kubectl apply --context ${CLUSTER1} -f - <<EOF
+apiVersion: networking.gloo.solo.io/v2
+kind: RouteTable
+metadata:
+  name: opa-rt
+  namespace: gloo-mesh-addons
+spec:
+  hosts:
+    - 'opa.gloo-mesh-addons.svc.cluster.local'
+  http:
+    - name: opa
+      matchers:
+      - uri:
+          prefix: /
+      forwardTo:
+        destinations:
+        - ref:
+            name: opa
+            namespace: gloo-mesh-addons
+          port:
+            number: 8181
+EOF
+```
 
-If you haven't done so already in a previous lab, make sure our `ExtAuthServer` CRD is configured 
+Now we can apply the required transformations in our diagram:
+
+First the transformation from client > OPA passthrough input
+```bash
+kubectl --context ${CLUSTER1} apply -f - <<EOF
+apiVersion: trafficcontrol.policy.gloo.solo.io/v2
+kind: TransformationPolicy
+metadata:
+  name: client-transformation
+  namespace: httpbin
+spec:
+  applyToRoutes:
+  - route:
+      labels:
+        transform: body
+  config:
+    phase:
+      preAuthz:
+        priority: -5
+    request:
+      injaTemplate:
+        body:
+          text: '{"input": { "action": "{{ action }}", "context": { "resourceId": "{{ resourceId }}" }, "jwt": "{{ jwt }}"}}'
+        extractors:
+          resourceId:
+            header: ':path'
+            regex: '.*'
+            subgroup: 0
+          action:
+            header: ':method'
+            regex: '.*'
+            subgroup: 0
+          jwt:
+            header: 'jwt'
+            regex: '.*'
+            subgroup: 0
+          
+EOF
+```
+
+We will need one other transformation for our POC to complete the expected OPA workflow. The current HTTP Passthrough implementation assumes the request is authorized if the server returns a OK (200) status code. When using HTTP Passthrough auth to an OPA container/sidecar using port 8181 (http mode) OPA will return a HTTP/1.1 200 OK status response to the ext-auth-server and authorize the request regardless of the OPA validation output result in the response body i.e. `{"result":true/false}`
+
+In order to follow this OPA model, we can use the transformation capability again to modify the :status pseudo-header based on the `{"result":true/false}`
+
+This E/W capability is currently planned for Gloo Platform 2.4.0, but in the meanwhile we can leverage the underlying Envoy Filter like so to complete our transformation workflow
+
+```bash
+kubectl --context ${CLUSTER1} apply -f - <<EOF
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: transformation
+  namespace: gloo-mesh-addons
+spec:
+  configPatches:
+  - applyTo: HTTP_ROUTE
+    match:
+      context: SIDECAR_OUTBOUND
+      routeConfiguration:
+        vhost:
+          route:
+            name: opa-opa-rt.gloo-mesh-addons.cluster1
+    patch:
+      operation: MERGE
+      value:
+        typedPerFilterConfig:
+          io.solo.transformation:
+            '@type': type.googleapis.com/udpa.type.v1.TypedStruct
+            typeUrl: envoy.api.v2.filter.http.RouteTransformations
+            value:
+              transformations:
+              - responseMatch:
+                  responseTransformation:
+                    transformationTemplate:
+                      headers:
+                        :status:
+                          text: '{% if default(result, "true") %}200{% else %}403{% endif %}'
+                stage: 1
+  - applyTo: HTTP_FILTER
+    match:
+      context: SIDECAR_OUTBOUND
+      listener:
+        filterChain:
+          filter:
+            name: envoy.filters.network.http_connection_manager
+            subFilter:
+              name: envoy.filters.http.router
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: io.solo.transformation
+        typedConfig:
+          '@type': type.googleapis.com/udpa.type.v1.TypedStruct
+          typeUrl: envoy.api.v2.filter.http.FilterTransformations
+          value:
+            stage: 1
+  workloadSelector:
+    labels:
+    # we need this only on the client
+      app: ext-auth-service
+EOF
+```
+
+Here you can see the transformation logic being applied between ext-auth-service and OPA.
+
+```bash
+value:
+  transformations:
+  - responseMatch:
+      responseTransformation:
+        transformationTemplate:
+          headers:
+            :status:
+              text: '{% if default(result, "true") %}200{% else %}403{% endif %}'
+    stage: 1
+```
+
+Make sure our `ExtAuthServer` CRD is configured with `passthroughBody: true` which will allow us to passthrough the body input to OPA
 
 ```bash
 kubectl --context ${CLUSTER1} apply -f - <<EOF
@@ -2568,6 +2824,8 @@ spec:
       namespace: gloo-mesh-addons
     port:
       name: grpc
+  requestBody: 
+    maxRequestBytes: 4096
 EOF
 ```
 
@@ -2588,9 +2846,11 @@ spec:
     glooAuth:
       configs:
       - passThroughAuth:
-          grpc:
-            # custom auth server is a sidecar in the ext-auth-server deployment
-            address: localhost:9001
+          http:
+            # internal opa route table
+            url: http://opa.gloo-mesh-addons.svc.cluster.local/v1/data/rbac/allow
+            request:
+              passThroughBody: true
     server:
       name: cluster1-ext-auth-server
       namespace: httpbin
@@ -2598,7 +2858,7 @@ spec:
 EOF
 ```
 
-Lastly, we need to update our route table with our ExtAuthPolicy route label `auth: passthrough`
+Lastly, we need to update our route table with our ExtAuthPolicy route label `auth: passthrough` and `transform: body` which will then apply our Passthrough `ExtAuthPolicy` as well as `TransformationPolicy` to our route
 
 ```bash
 kubectl --context ${CLUSTER1} apply -f - <<EOF
@@ -2614,6 +2874,7 @@ spec:
     - name: httpbin
       labels:
         auth: passthrough
+        transform: body
       matchers:
       - uri:
           exact: /
@@ -2633,9 +2894,9 @@ spec:
 EOF
 ```
 
-Now we should be able to test our passthrough ext auth by providing the header `authorization: authorize me` in our request
+Now we should be able to test our passthrough ext auth by providing a valid `jwt` header in our request
 
-First without - output should be `403 You don't have authorization to view this page`
+First without - output should be `401`
 
 ```bash
 curl -kI https://${ENDPOINT_HTTPS_GW_CLUSTER1}/get
@@ -2644,7 +2905,7 @@ curl -kI https://${ENDPOINT_HTTPS_GW_CLUSTER1}/get
 output:
 
 ```bash
-HTTP/2 403 
+HTTP/2 401
 date: Thu, 20 Apr 2023 00:09:07 GMT
 server: istio-envoy
 ```
@@ -2652,7 +2913,7 @@ server: istio-envoy
 Then with - output should be `200`
 
 ```bash
-curl -kI https://${ENDPOINT_HTTPS_GW_CLUSTER1}/get --header "Authorization: authorize me"
+curl -kI https://${ENDPOINT_HTTPS_GW_CLUSTER1}/get --header "jwt: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJncm91cHMiOlsiYWRtaW4tZ3JvdXAiXX0.8V_AFuGdtFk3FyDKbAjDPX5zoxh7RP0TeMyVg2ZUClg"
 ```
 
 output:
@@ -2660,38 +2921,34 @@ output:
 ```bash
 HTTP/2 200 
 server: istio-envoy
-date: Thu, 20 Apr 2023 00:09:56 GMT
+date: Tue, 09 May 2023 00:40:00 GMT
 content-type: application/json
-content-length: 743
+content-length: 824
 access-control-allow-origin: *
 access-control-allow-credentials: true
-x-envoy-upstream-service-time: 7
+x-envoy-upstream-service-time: 5
 ```
 
-If you take a look at the logs of our `grpc-extauth` Sidecar, we can see that it is denying the request
+If you take a look at the logs of our OPA deployment, we can see the `true/false` policy validation happening
 
 Run the following command to view the logs
 
 ```bash
-kubectl --context ${CLUSTER1} logs -n gloo-mesh-addons deploy/ext-auth-service -c grpc-extauth
+kubectl --context ${CLUSTER1} logs -n gloo-mesh-addons deploy/opa -f
 ```
 
 Output should look similar to below
 
 ```bash
-% kubectl --context ${CLUSTER1} logs -n gloo-mesh-addons deploy/ext-auth-service -c grpc-extauth
-2023/04/19 23:54:41 starting gRPC server on: 9001
-2023/04/20 00:08:51 Request does not have correct authorization header
-2023/04/20 00:09:07 Request does not have correct authorization header
-2023/04/20 00:09:56 Recieved request with correct authorization header
-2023/04/20 00:10:53 Recieved request with correct authorization header
-2023/04/20 00:11:43 Recieved request with correct authorization header
+% kubectl --context ${CLUSTER1} logs -n gloo-mesh-addons deploy/opa
+
+{"client_addr":"127.0.0.6:36771","level":"info","msg":"Sent response.","req_id":100,"req_method":"POST","req_path":"/v1/data/rbac/allow","resp_body":"{\"decision_id\":\"4c67c514-bf38-49dc-b205-0e45487a26a7\",\"result\":false}\n","resp_bytes":70,"resp_duration":0.447475,"resp_status":200,"time":"2023-05-09T00:42:11Z"}
+
+{"client_addr":"127.0.0.6:36771","level":"info","msg":"Sent response.","req_id":105,"req_method":"POST","req_path":"/v1/data/rbac/allow","resp_body":"{\"decision_id\":\"bca7be21-8477-46e5-ae71-1497b45cf6d3\",\"result\":true}\n","resp_bytes":69,"resp_duration":0.404343,"resp_status":200,"time":"2023-05-09T00:42:46Z"}
 ```
 
-### Next Steps
-As a next step to this exercise, we can swap the example `grpc-extauth` Sidecar container with an OPA sidecar to handle our authorization with the same Passthrough External Auth workflow. The architecture will look similar to below
+Congrats, now we have just completed the full required flow of our OPA implementation by leveraging the capabilities of the platform!
 
-![](images/extauth/passthrough3.png)
 
 
 ## Lab 21 - Routing to a GRPC Service <a name="lab-21---routing-to-a-grpc-service-"></a>
