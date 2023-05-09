@@ -224,7 +224,7 @@ First of all, let's create Kubernetes services for the gateways:
 
 ```bash
 kubectl --context ${CLUSTER1} create ns istio-gateways
-kubectl --context ${CLUSTER1} label namespace istio-gateways istio.io/rev=1-16 --overwrite
+kubectl --context ${CLUSTER1} label namespace istio-gateways istio.io/rev=1-17 --overwrite
 
 cat << EOF | kubectl --context ${CLUSTER1} apply -f -
 apiVersion: v1
@@ -248,7 +248,7 @@ spec:
   selector:
     app: istio-ingressgateway
     istio: solo-ingressgateway
-    revision: 1-16
+    revision: 1-17
   type: LoadBalancer
 
 EOF
@@ -286,11 +286,11 @@ spec:
     - clusters:
       - name: cluster1
         defaultRevision: true
-      revision: 1-16
+      revision: 1-17
       istioOperatorSpec:
         profile: minimal
         hub: us-docker.pkg.dev/gloo-mesh/istio-workshops
-        tag: 1.16.2-solo
+        tag: 1.17.1-solo
         namespace: istio-system
         values:
           global:
@@ -327,11 +327,11 @@ spec:
     - clusters:
       - name: cluster1
         activeGateway: false
-      gatewayRevision: 1-16
+      gatewayRevision: 1-17
       istioOperatorSpec:
         profile: empty
         hub: us-docker.pkg.dev/gloo-mesh/istio-workshops
-        tag: 1.16.2-solo
+        tag: 1.17.1-solo
         values:
           gateways:
             istio-ingressgateway:
@@ -377,7 +377,7 @@ First, you need to create a namespace for the addons, with Istio injection enabl
 
 ```bash
 kubectl --context ${CLUSTER1} create namespace gloo-mesh-addons
-kubectl --context ${CLUSTER1} label namespace gloo-mesh-addons istio.io/rev=1-16 --overwrite
+kubectl --context ${CLUSTER1} label namespace gloo-mesh-addons istio.io/rev=1-17 --overwrite
 ```
 
 Then, you can deploy the addons on the cluster(s) using Helm:
@@ -468,7 +468,7 @@ Run the following commands to deploy the httpbin app named `in-mesh` on `cluster
 
 ```bash
 kubectl --context ${CLUSTER1} create ns httpbin
-kubectl --context ${CLUSTER1} label namespace httpbin istio.io/rev=1-16 --overwrite
+kubectl --context ${CLUSTER1} label namespace httpbin istio.io/rev=1-17 --overwrite
 
 kubectl --context ${CLUSTER1} apply -n httpbin -f - <<EOF
 apiVersion: v1
@@ -507,7 +507,7 @@ spec:
         app: in-mesh
         version: v1
         # uncomment for pod label injection
-        #istio.io/rev: 1-16
+        #istio.io/rev: 1-17
     spec:
       serviceAccountName: in-mesh
       containers:
@@ -1404,7 +1404,7 @@ istioctl proxy-config endpoint -n httpbin deploy/in-mesh
 
 ## Inspect bootstrap configuration
 ```
-istioctl proxy-config bootstrap -n istio-gateways deploy/istio-ingressgateway-1-16
+istioctl proxy-config bootstrap -n istio-gateways deploy/istio-ingressgateway-1-17
 ```
 
 ## Create an Istio Bug Report
@@ -1495,7 +1495,7 @@ EOF
 
 After you let some traffic flow through the gateway, you will be able to see proxy latency histograms corresponding to each service in the proxy envoy/prometheus stats. To get to the stats page, use this port-forward command below
 ```
-kubectl --context ${CLUSTER1} port-forward deploy/istio-ingressgateway-1-16 -n istio-gateways 15000:15000
+kubectl --context ${CLUSTER1} port-forward deploy/istio-ingressgateway-1-17 -n istio-gateways 15000:15000
 ```
 
 Now navigate to localhost:15000 in your browser. Scroll down to the stats/prometheus to view the proxy Prometheus stats. If you search for `latency` you should be able to find newly emitted metrics measuring proxy latency
@@ -1533,7 +1533,7 @@ Note that `le` refers to milliseconds, and the counts are cumulative. So using t
 Set the variables corresponding to the old and new revision tags:
 
 ```bash
-export OLD_REVISION=1-16
+export OLD_REVISION=1-17
 export NEW_REVISION=1-17
 ```
 
@@ -1556,7 +1556,7 @@ spec:
       istioOperatorSpec:
         profile: minimal
         hub: us-docker.pkg.dev/gloo-mesh/istio-workshops
-        tag: 1.16.2-solo
+        tag: 1.17.1-solo
         namespace: istio-system
         values:
           global:
@@ -1632,7 +1632,7 @@ spec:
       istioOperatorSpec:
         profile: empty
         hub: us-docker.pkg.dev/gloo-mesh/istio-workshops
-        tag: 1.16.2-solo
+        tag: 1.17.1-solo
         values:
           gateways:
             istio-ingressgateway:
@@ -2003,7 +2003,7 @@ This should succeed
     "X-B3-Traceid": "cf8ef719219f3093bda0797f91efc059", 
     "X-Envoy-Attempt-Count": "1", 
     "X-Envoy-Internal": "true", 
-    "X-Forwarded-Client-Cert": "Hash=12918ade28133e2af82c13758baba46a3ebbfb86693fa5ae0d9f4c4198942bc9;Cert=\"-----BEGIN%20CERTIFICATE-----%0AMIIC%2BTCCAeGgAwIBAgIUY0DWKWCz5iYfcmbjnwX1MIwaj7wwDQYJKoZIhvcNAQEL%0ABQAwDDEKMAgGA1UEAwwBKjAeFw0yMzA0MTAxNTUyNDNaFw0yNDA0MDkxNTUyNDNa%0AMAwxCjAIBgNVBAMMASowggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCT%0AD6kdIWO1ZUPKLzpAJ3KXrYl%2F6CDZDfHYb5iCf%2BkdwymlJ%2FL3FqNBk6ufg27N69OW%0AK2N%2FkHa707E6%2FFysH4qX%2FbJ2nCC4CDxiTU972y56sduHkpv7%2F%2FpkgUD2Cwir0j%2FH%0AOrmsEo60XZq4hsFVX7XMs4MojhW1IojVvcANj5x8wV16%2Bs6Pfbstw5dtf86zVRqT%0AoOXLnlE%2FMZ0LjFg%2FJxetEwD9RpMXIZp44uriPk4Ja0Q0RJ2hzBhbPah8J77FcuC2%0AAii1OLQwGHgcCQQQ%2FLKs1ZRO07WAqgGibQytCGGWScxX2cNW3%2BgslvbEVAno2XGG%0ABGdTq30DhL7u%2FCILB6XnAgMBAAGjUzBRMB0GA1UdDgQWBBRD7km0jt7S1Ry%2FZ9T2%0Azl8KJ%2F1bmTAfBgNVHSMEGDAWgBRD7km0jt7S1Ry%2FZ9T2zl8KJ%2F1bmTAPBgNVHRMB%0AAf8EBTADAQH%2FMA0GCSqGSIb3DQEBCwUAA4IBAQBnU5hnCnghSQHFOiBWYcmGRdkU%0APtoXTM6KVIxzS%2F11DokIfiIp9mVbUpx3i%2BYSKY8NQ6%2BkyNkWQkrWaVDumn%2Fk6Q0s%0A%2F2uJ3H6L6Wv0xavudG7Jz5iqiTTJG%2FEBfEhaXffyHxjsq69wu4a3GAQ4WPvA%2BnhX%0AY%2FQBLlP%2BCbtrFBFlx%2F0TLyPnSJ2YvuGe53FV3341r1N9%2BlM6%2FrC6xVzHHWt0u%2BVO%0AS3qFbTTWKFWqFD1u6KiOzm6DrIOJCdej7X1ZHNYKx4WsPQ6fpZlzYECPsx%2FbnS7F%0AN6Nb1AtqxEdqE6gVAzg7UX9uuNAi8VbQbwxddvxpk5LtahZ1b3lWjsPYVLnR%0A-----END%20CERTIFICATE-----%0A\";Subject=\"CN=*\";URI=,By=spiffe://mgmt/ns/httpbin/sa/in-mesh;Hash=ed5b55e8df6f9845f52506d6e760d242f475ff84a0a551d97a988073b54868a2;Subject=\"\";URI=spiffe://mgmt/ns/istio-gateways/sa/istio-ingressgateway-1-16"
+    "X-Forwarded-Client-Cert": "Hash=12918ade28133e2af82c13758baba46a3ebbfb86693fa5ae0d9f4c4198942bc9;Cert=\"-----BEGIN%20CERTIFICATE-----%0AMIIC%2BTCCAeGgAwIBAgIUY0DWKWCz5iYfcmbjnwX1MIwaj7wwDQYJKoZIhvcNAQEL%0ABQAwDDEKMAgGA1UEAwwBKjAeFw0yMzA0MTAxNTUyNDNaFw0yNDA0MDkxNTUyNDNa%0AMAwxCjAIBgNVBAMMASowggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCT%0AD6kdIWO1ZUPKLzpAJ3KXrYl%2F6CDZDfHYb5iCf%2BkdwymlJ%2FL3FqNBk6ufg27N69OW%0AK2N%2FkHa707E6%2FFysH4qX%2FbJ2nCC4CDxiTU972y56sduHkpv7%2F%2FpkgUD2Cwir0j%2FH%0AOrmsEo60XZq4hsFVX7XMs4MojhW1IojVvcANj5x8wV16%2Bs6Pfbstw5dtf86zVRqT%0AoOXLnlE%2FMZ0LjFg%2FJxetEwD9RpMXIZp44uriPk4Ja0Q0RJ2hzBhbPah8J77FcuC2%0AAii1OLQwGHgcCQQQ%2FLKs1ZRO07WAqgGibQytCGGWScxX2cNW3%2BgslvbEVAno2XGG%0ABGdTq30DhL7u%2FCILB6XnAgMBAAGjUzBRMB0GA1UdDgQWBBRD7km0jt7S1Ry%2FZ9T2%0Azl8KJ%2F1bmTAfBgNVHSMEGDAWgBRD7km0jt7S1Ry%2FZ9T2zl8KJ%2F1bmTAPBgNVHRMB%0AAf8EBTADAQH%2FMA0GCSqGSIb3DQEBCwUAA4IBAQBnU5hnCnghSQHFOiBWYcmGRdkU%0APtoXTM6KVIxzS%2F11DokIfiIp9mVbUpx3i%2BYSKY8NQ6%2BkyNkWQkrWaVDumn%2Fk6Q0s%0A%2F2uJ3H6L6Wv0xavudG7Jz5iqiTTJG%2FEBfEhaXffyHxjsq69wu4a3GAQ4WPvA%2BnhX%0AY%2FQBLlP%2BCbtrFBFlx%2F0TLyPnSJ2YvuGe53FV3341r1N9%2BlM6%2FrC6xVzHHWt0u%2BVO%0AS3qFbTTWKFWqFD1u6KiOzm6DrIOJCdej7X1ZHNYKx4WsPQ6fpZlzYECPsx%2FbnS7F%0AN6Nb1AtqxEdqE6gVAzg7UX9uuNAi8VbQbwxddvxpk5LtahZ1b3lWjsPYVLnR%0A-----END%20CERTIFICATE-----%0A\";Subject=\"CN=*\";URI=,By=spiffe://mgmt/ns/httpbin/sa/in-mesh;Hash=ed5b55e8df6f9845f52506d6e760d242f475ff84a0a551d97a988073b54868a2;Subject=\"\";URI=spiffe://mgmt/ns/istio-gateways/sa/istio-ingressgateway-1-17"
   }, 
   "origin": "10.42.0.1", 
   "url": "https://httpbin-local.glootest.com/get"
@@ -2495,7 +2495,7 @@ If we have already deployed the `ext-auth-server` as a part of Gloo Mesh Addons 
 
 ```bash
 kubectl --context ${CLUSTER1} create namespace gloo-mesh-addons
-kubectl --context ${CLUSTER1} label namespace gloo-mesh-addons istio.io/rev=1-16 --overwrite
+kubectl --context ${CLUSTER1} label namespace gloo-mesh-addons istio.io/rev=1-17 --overwrite
 
 helm upgrade --install gloo-mesh-agent-addons gloo-mesh-agent/gloo-mesh-agent \
 --namespace gloo-mesh-addons \
@@ -2958,7 +2958,7 @@ Since we can treat this as a new app/team we can create a new `Workspace` and `W
 First we need to create the `currency` namespace and label it for istio injection
 ```
 kubectl --context ${CLUSTER1} create namespace currency
-kubectl --context ${CLUSTER1} label namespace currency istio.io/rev=1-16 --overwrite
+kubectl --context ${CLUSTER1} label namespace currency istio.io/rev=1-17 --overwrite
 ```
 
 Next we can configure the Workspace
