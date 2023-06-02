@@ -14,6 +14,7 @@
 * [Lab 6 - Deploy the httpbin demo app](#lab-6---deploy-the-httpbin-demo-app-)
 * [Lab 7 - Create the httpbin workspace](#lab-7---create-the-httpbin-workspace-)
 * [Lab 8 - Expose the httpbin service](#lab-8---expose-the-httpbin-service-)
+* [Extra Lab - Performance Testing with External OPA](#extra-lab--performance-test-)
 * [Lab 9 - Securing Application access with ExtAuthPolicy](#lab-9---securing-application-access-with-extauthpolicy-)
 * [Lab 10 - Integrating with OPA](#lab-10---integrating-with-opa-)
 * [Lab 11 - Apply rate limiting to the Gateway](#lab-11---apply-rate-limiting-to-the-gateway-)
@@ -751,6 +752,262 @@ This diagram shows the flow of the request (through the Istio Ingress Gateway):
 
 ![Gloo Mesh Gateway](images/arch/arch-1b.png)
 
+## Extra Lab - Performance Testing with External OPA <a name="extra-lab--performance-test-"></a>
+
+This lab will be used to demonstrate how we can leverage external auth as a function within OPA to authenticate requests with OPA.
+
+First, let's clean up any policies that may already exist from previous labs
+
+```
+kubectl --context ${CLUSTER1} -n httpbin delete ExtAuthPolicy httpbin-extauth
+kubectl --context ${CLUSTER1} -n httpbin delete ExtAuthPolicy httpbin-opa
+kubectl --context ${CLUSTER1} -n httpbin delete ExtAuthPolicy httpbin-keycloak-extauth
+```
+
+### Define an OPA Policy
+
+The following OPA policy allows us to utilize OPA as an extauth server.
+
+*policy.rego*
+```
+kubectl apply --context ${CLUSTER1} -f - <<EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opa-policy
+  namespace: httpbin
+data:
+  policy.rego: |-
+    package rbac
+
+    import future.keywords
+    import input.attributes.request.http as http_request
+
+    default allow := false
+
+    allow if {
+      is_token_valid
+      action_allowed
+    }
+
+    is_token_valid if {
+      token.valid
+      now := time.now_ns() / 1000000000
+      token.payload.nbf <= now
+      now < token.payload.exp
+    }
+
+    action_allowed if {
+      http_request.method == "GET"
+      token.payload.role == "admin"
+    }
+
+    action_allowed if {
+	    http_request.method == "GET"
+	    token.payload.role == "admin"
+    }
+
+    action_allowed if {
+	    http_request.method == "POST"
+	    token.payload.role == "admin"
+    }
+
+    token := {"valid": valid, "payload": payload} if {
+	    [_, encoded] := split(http_request.headers.authorization, " ")
+	    [valid, _, payload] := io.jwt.decode_verify(encoded, {"secret": "secret"})
+    }
+EOF
+```
+
+Create a ConfigMap from the rego.
+
+```
+kubectl create configmap opa-policy -n httpbin --from-file opa-policy.rego
+```
+
+### Deploying OPA
+
+Next we will deploy OPA as our authorization server with the extauth flag enabled.
+
+```
+kubectl apply --context ${CLUSTER1} -f - <<EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: opa
+  namespace: gloo-mesh-addons
+  labels:
+      app: opa
+spec:
+  ports:
+  - port: 8181
+    protocol: TCP
+  selector:
+      app: opa
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: opa
+  namespace: gloo-mesh-addons
+  labels:
+    app: opa
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: opa
+  template:
+    metadata:
+      labels:
+        app: opa
+    spec:
+      containers:
+        - name: opa
+          image: openpolicyagent/opa:latest-envoy
+          securityContext:
+            runAsUser: 1111
+          volumeMounts:
+          - readOnly: true
+            mountPath: /policy
+            name: opa-policy
+          args:
+          - "run"
+          - "--server"
+          - "--set=default_decision=v1/data/rbac/allow"
+          - "--addr=0.0.0.0:8181"
+          - "--diagnostic-addr=0.0.0.0:8282"
+          - "--log-level=debug"
+          - "--set=decision_logs.console=true"
+          - "--set=log-format=json-pretty"
+          - "--ignore=.*"
+          - "/policy"
+          ports:
+          - containerPort: 8181
+          resources:
+            requests:
+              cpu: "2000m"
+              memory: "1500Mi"
+          livenessProbe:
+            httpGet:
+              path: /health?plugins
+              scheme: HTTP
+              port: 8282
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health?plugins
+              scheme: HTTP
+              port: 8282
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: proxy-config
+          configMap:
+            name: proxy-config
+        - name: opa-policy
+          configMap:
+            name: opa-policy
+EOF
+```
+
+Check to see if the OPA server has been deployed
+
+```
+kubectl --context ${CLUSTER1} get pods -n gloo-mesh-addons
+```
+
+The output should look similar to below:
+```
+% kubectl --context ${CLUSTER1} get pods -n gloo-mesh-addons   
+NAME                               READY   STATUS    RESTARTS   AGE
+rate-limiter-64b64b779c-xrtsn      2/2     Running   0          29m
+redis-578865fd78-rgjqm             2/2     Running   0          29m
+ext-auth-service-76d8457d9-d69k9   2/2     Running   0          11m
+opa-7f845fd897-t95l2               2/2     Running   0          20s
+opa-6b8bdd489c-t5gnv               2/2     Running   0          5m
+```
+
+We can simply create an `ExtAuthServer` instance pointing to the opa instance now in order to leverage it.
+
+```
+kubectl --context ${CLUSTER1} apply -f - <<EOF
+apiVersion: admin.gloo.solo.io/v2
+kind: ExtAuthServer
+metadata:
+  name: opa-ext-auth-server
+  namespace: httpbin
+spec:
+  destinationServer:
+    port:
+      name: grpc
+    ref:
+      cluster: cluster1
+      name: opa
+      namespace: httpbin
+EOF
+```
+
+We then create an `ExtAuthPolicy` that will invoke OPA.
+
+```
+kubectl --context ${CLUSTER1} apply -f - <<EOF
+apiVersion: security.policy.gloo.solo.io/v2
+kind: ExtAuthPolicy
+metadata:
+  name: passthrough-auth
+  namespace: httpbin
+spec:
+  applyToRoutes:
+  - route:
+      labels:
+        auth: passthrough
+  config:
+    customAuth: {}
+    server:
+      cluster: cluster1
+      name: opa-ext-auth-server
+      namespace: httpbin
+EOF
+```
+
+Lastly, we add the `auth: passthrough` label to our `RouteTable`.
+
+```
+kubectl --context ${CLUSTER1} apply -f - <<EOF
+apiVersion: networking.gloo.solo.io/v2
+kind: RouteTable
+metadata:
+  labels:
+    expose: "true"
+  name: httpbin
+  namespace: httpbin
+spec:
+  http:
+  - forwardTo:
+      destinations:
+      - port:
+          number: 8000
+        ref:
+          name: in-mesh
+          namespace: httpbin
+    labels:
+      auth: passthrough
+    matchers:
+    - uri:
+        exact: /get
+    - uri:
+        prefix: /anything
+    - uri:
+        prefix: /callback
+    - uri:
+        prefix: /logout
+    name: httpbin
+EOF
+```
+
+Now, you should be ready to test!
 
 ## Lab 9 - Securing Application access with ExtAuthPolicy <a name="lab-9---securing-application-access-with-extauthpolicy-"></a>
 In this step, we're going to secure the access to the `httpbin` service using OAuth. Integrating an app with extauth consists of a few steps:
